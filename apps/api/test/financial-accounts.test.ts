@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { createApi } from "../src/app.ts";
 import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
 
@@ -8,7 +8,15 @@ const ownerGoogleSubject = "123456789012345678901";
 const anotherUserId = "7ef58723-a18a-47c5-bb72-3597c1918cf5";
 
 function providerUser(id: string, providerId: string) {
-  return { id, identities: [{ provider: "google", provider_id: providerId }] };
+  return {
+    id,
+    identities: [{
+      id: providerId,
+      identity_id: "15d277d9-fce2-4936-9b36-ee6f6fccae62",
+      user_id: id,
+      provider: "google",
+    }],
+  };
 }
 
 const openingAccount = {
@@ -19,7 +27,7 @@ const openingAccount = {
   openingBalance: "3000.00",
 };
 
-test("direct reads and writes reject missing and unverified tokens and another Google identity", async (context) => {
+test("direct reads and writes reject missing and unverified tokens and another Google identity", async ({ onTestFinished }) => {
   const authorize = createOwnerAuthorizer({
     supabaseUrl: "https://project.example",
     supabasePublishableKey: "sb_publishable_test",
@@ -41,16 +49,16 @@ test("direct reads and writes reject missing and unverified tokens and another G
   const app = await createApi({
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
-    reportError: context.assert.fail,
+    reportError: assert.fail,
     accounts: {
       authorize,
       repository: {
-        list: async () => context.assert.fail("Unauthorized request reached storage"),
-        open: async () => context.assert.fail("Unauthorized request reached storage"),
+        list: async () => assert.fail("Unauthorized request reached storage"),
+        open: async () => assert.fail("Unauthorized request reached storage"),
       },
     },
   });
-  context.after(() => app.close());
+  onTestFinished(() => app.close());
 
   for (const [authorization, status] of [
     [undefined, 401],
@@ -75,7 +83,7 @@ test("direct reads and writes reject missing and unverified tokens and another G
 
 test("an owner can open dated SGD accounts that survive an API restart without creating income or expenses", {
   skip: !process.env.FINSCOPE_TEST_DATABASE_URL,
-}, async (context) => {
+}, async ({ onTestFinished }) => {
   const { randomUUID } = await import("node:crypto");
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const { Pool } = await import("pg");
@@ -92,7 +100,7 @@ test("an owner can open dated SGD accounts that survive an API restart without c
 
   async function startApi() {
     const pool = new Pool({ connectionString: process.env.FINSCOPE_TEST_DATABASE_URL });
-    context.after(() => pool.end());
+    onTestFinished(() => pool.end());
     await migrateDatabase(pool);
     const authorize = createOwnerAuthorizer({
       supabaseUrl: "https://project.example",
@@ -104,10 +112,10 @@ test("an owner can open dated SGD accounts that survive an API restart without c
     const app = await createApi({
       checkDatabase: async () => {},
       corsOrigin: "https://finscope.pages.dev",
-      reportError: context.assert.fail,
+      reportError: assert.fail,
       accounts: { authorize, repository: createFinancialAccountRepository(drizzle(pool)) },
     });
-    context.after(() => app.close());
+    onTestFinished(() => app.close());
     return app;
   }
 

@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { healthResponses } from "@finscope/contracts/health";
 import Fastify, { LogController } from "fastify";
 import { z } from "zod";
@@ -40,13 +41,13 @@ export async function createApi({ checkDatabase, corsOrigin, reportError, accoun
     if (error instanceof Error && "statusCode" in error) {
       const status = error.statusCode;
       if (typeof status === "number" && status >= 400 && status < 500) {
-        return reply.code(status).send({ status: "invalid_request" });
+        return reply.code(status).send(apiErrorResponses[400].parse({ status: "invalid_request" }));
       }
     }
 
     request.log.error({ route: request.routeOptions.url }, "Unexpected API error");
     reportError(error instanceof Error ? error : new Error("Unexpected API error"));
-    return reply.code(500).send({ status: "error" });
+    return reply.code(500).send(apiErrorResponses[500].parse({ status: "error" }));
   });
 
   api.get("/health", {

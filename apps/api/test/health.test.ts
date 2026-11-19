@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { test } from "node:test";
 import { healthResponses } from "@finscope/contracts/health";
+import { test } from "vitest";
 import { z } from "zod";
 import { createApi } from "../src/app.ts";
 
-test("GET /health reports ready when PostgreSQL responds", async (context) => {
+test("GET /health reports ready when PostgreSQL responds", async ({ onTestFinished }) => {
   const app = await createApi({
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
     reportError: () => {},
   });
-  context.after(() => app.close());
+  onTestFinished(() => app.close());
 
   const response = await app.inject({
     method: "GET",
@@ -25,7 +25,7 @@ test("GET /health reports ready when PostgreSQL responds", async (context) => {
   assert.equal(response.headers["access-control-allow-origin"], "https://finscope.pages.dev");
 });
 
-test("GET /health returns a sanitized 503 when PostgreSQL is unavailable", async (context) => {
+test("GET /health returns a sanitized 503 when PostgreSQL is unavailable", async ({ onTestFinished }) => {
   const app = await createApi({
     checkDatabase: async () => {
       throw new Error("database password is sensitive");
@@ -33,7 +33,7 @@ test("GET /health returns a sanitized 503 when PostgreSQL is unavailable", async
     corsOrigin: "https://finscope.pages.dev",
     reportError: () => {},
   });
-  context.after(() => app.close());
+  onTestFinished(() => app.close());
 
   const response = await app.inject({
     method: "GET",

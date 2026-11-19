@@ -1,4 +1,4 @@
-import { openFinancialAccount } from "@finscope/contracts/financial-accounts";
+import { accountTypes, openFinancialAccount } from "@finscope/contracts/financial-accounts";
 import type { FinancialAccount, OpenFinancialAccount } from "@finscope/contracts/financial-accounts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Session } from "@supabase/supabase-js";
@@ -108,8 +108,9 @@ function OpenAccountForm({ token, queryKey }: { token: string; queryKey: readonl
         <div className="grid gap-1.5">
           <label htmlFor="account-type" className="text-sm font-semibold">Account type</label>
           <select id="account-type" className={inputStyle} {...register("type")}>
-            <option value="bank">Bank</option>
-            <option value="brokerage">Brokerage</option>
+            {accountTypes.map((type) => (
+              <option key={type} value={type}>{accountTypeLabels[type]}</option>
+            ))}
           </select>
         </div>
         <div className="grid gap-1.5">

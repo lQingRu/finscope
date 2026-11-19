@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { apiErrorResponses } from "./api-errors.ts";
 
 export const accountTypes = ["bank", "brokerage"] as const;
 export const zeroSgd = "0.00";
@@ -34,17 +35,16 @@ const financialAccounts = z.strictObject({
   }),
 });
 
-const errors = {
-  400: z.object({ status: z.literal("invalid_request") }),
+export const financialAccountErrors = {
+  ...apiErrorResponses,
   401: z.object({ status: z.literal("unauthenticated") }),
   403: z.object({ status: z.literal("forbidden") }),
-  500: z.object({ status: z.literal("error") }),
   503: z.object({ status: z.literal("unavailable") }),
 };
 
 export const financialAccountResponses = {
-  list: { 200: financialAccounts, ...errors },
-  open: { 201: financialAccount, ...errors },
+  list: { 200: financialAccounts, ...financialAccountErrors },
+  open: { 201: financialAccount, ...financialAccountErrors },
 };
 
 export type OpenFinancialAccount = z.infer<typeof openFinancialAccount>;

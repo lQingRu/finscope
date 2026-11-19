@@ -1,12 +1,12 @@
 import {
+  financialAccountErrors,
   financialAccountResponses,
   openFinancialAccount,
-  zeroSgd,
 } from "@finscope/contracts/financial-accounts";
 import type { FinancialAccount, OpenFinancialAccount } from "@finscope/contracts/financial-accounts";
-import { Decimal } from "decimal.js";
 import type { FastifyPluginAsync } from "fastify";
 import type { AuthorizeOwner } from "./authorization.ts";
+import { summarizeFinancialAccounts } from "./summary.ts";
 
 export type FinancialAccountRepository = {
   list: (ownerUserId: string) => Promise<FinancialAccount[]>;
@@ -28,8 +28,9 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
 
     const authorization = await authorize(request.headers.authorization);
     if (authorization.status !== "authorized") {
-      const status = authorization.status;
-      return reply.code({ unauthenticated: 401, forbidden: 403, unavailable: 503 }[status]).send({ status });
+      const status = { unauthenticated: 401, forbidden: 403, unavailable: 503 } as const;
+      const code = status[authorization.status];
+      return reply.code(code).send(financialAccountErrors[code].parse(authorization));
     }
 
     request.setDecorator("workspaceOwnerId", authorization.ownerUserId);
@@ -37,13 +38,9 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
 
   api.get("/financial-accounts", async (request, reply) => {
     const accounts = await repository.list(request.getDecorator<string>("workspaceOwnerId"));
-    const balance = accounts.reduce(
-      (total, account) => total.plus(account.openingBalance),
-      new Decimal(0),
-    );
     return reply.send(financialAccountResponses.list[200].parse({
       accounts,
-      summary: { currency: "SGD", balance: balance.toFixed(2), income: zeroSgd, expenses: zeroSgd },
+      summary: summarizeFinancialAccounts(accounts),
     }));
   });
 

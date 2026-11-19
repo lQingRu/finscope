@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./api-errors": "./api-errors.ts",
     "./health": "./health.ts",
     "./financial-accounts": "./financial-accounts.ts"
   },

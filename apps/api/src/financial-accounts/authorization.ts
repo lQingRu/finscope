@@ -13,7 +13,7 @@ type OwnerAuthorization =
 
 const userSchema = z.object({
   id: z.uuid(),
-  identities: z.array(z.object({ provider: z.string(), provider_id: z.string() })).default([]),
+  identities: z.array(z.object({ provider: z.string(), id: z.string() })).default([]),
 });
 
 const oauthClaims = z.object({
@@ -67,7 +67,7 @@ export function createOwnerAuthorizer(options: OwnerAuthOptions, lookupUser = fe
         user.id !== options.ownerUserId
         || user.identities.length !== 1
         || identity.provider !== "google"
-        || identity.provider_id !== options.ownerGoogleSubject
+        || identity.id !== options.ownerGoogleSubject
         || !hasOAuthSession(token[2], user.id)
       ) {
         return { status: "forbidden" };

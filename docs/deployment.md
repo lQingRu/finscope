@@ -9,8 +9,8 @@ Install Node.js 26, pnpm 11.3.0, and Docker with Compose. From the repository ro
 ```sh
 pnpm install --frozen-lockfile
 docker compose up -d --wait db
-cp apps/api/.env.example apps/api/.env
-cp apps/web/.env.example apps/web/.env
+test -e apps/api/.env || cp apps/api/.env.example apps/api/.env
+test -e apps/web/.env || cp apps/web/.env.example apps/web/.env
 ```
 
 Follow [Configure Google and bootstrap the owner](#configure-google-and-bootstrap-the-owner) with a development Supabase Auth project. Fill in the project values and owner IDs in the local environment files.
@@ -77,8 +77,8 @@ If the API stays unavailable, inspect Render logs and confirm the Supabase proje
 
 ### Owner walkthrough
 
-1. On the Pages URL, confirm the sign-in screen appears while signed out. Sign in with the designated Google account. Open a bank account with SGD 3,000 and a brokerage account with SGD 0. Use distinct names and record both opening dates.
-2. Verify the two dated balances appear in **Financial accounts**, with SGD 3,000 total balance and SGD 0 for income and expenses on a fresh workspace. Repeat the walkthrough on desktop and a narrow mobile viewport, including the form layout and sign-out. Refresh and sign in again to confirm the entries remain. Rerun the deployment workflow and confirm the same entries and amounts are still present.
+1. On a desktop viewport, open the Pages URL and confirm the sign-in screen appears while signed out. Sign in with the designated Google account and open a bank account with SGD 3,000. Switch to a narrow mobile viewport and open a brokerage account with SGD 0. Use distinct names and record both opening dates.
+2. On both viewport sizes, verify that the form is usable and that **Financial accounts** shows the two dated balances, SGD 3,000 total balance, and SGD 0 for income and expenses on a fresh workspace. Sign out, refresh, and sign in again to confirm the entries remain. Rerun the deployment workflow and confirm the same entries and amounts are still present.
 3. Sign in from a private browser as the second Google identity. Verify the page says **Access restricted**. Check both direct API methods while signed out and using each Google identity. The expected responses are below. Browser DevTools shows the Supabase access token in the finance request's Authorization header after sign-in. Keep it in your own terminal session and clear it after the checks.
 
 | Caller | GET `/financial-accounts` | POST `/financial-accounts` |
