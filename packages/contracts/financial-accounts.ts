@@ -1,5 +1,5 @@
+import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { z } from "zod";
-import { apiErrorResponses } from "./api-errors.ts";
 
 export const accountTypes = ["bank", "brokerage"] as const;
 export const zeroSgd = "0.00";
