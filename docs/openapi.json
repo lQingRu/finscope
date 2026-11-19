@@ -16,9 +16,16 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "enum": ["ok"] }
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
                   },
-                  "required": ["status"],
+                  "required": [
+                    "status"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -31,12 +38,356 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "enum": ["unavailable"] }
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable"
+                      ]
+                    }
                   },
-                  "required": ["status"],
+                  "required": [
+                    "status"
+                  ],
                   "additionalProperties": false
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "/financial-accounts": {
+      "get": {
+        "summary": "List the owner's financial accounts and opening balance totals",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accounts and totals in SGD. Opening balances contribute zero to income and expenses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      },
+      "post": {
+        "summary": "Open a bank or brokerage financial account",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenFinancialAccount"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The financial account was opened.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "supabaseAccessToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "OpenFinancialAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "brokerage"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "openingDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "openingBalance": {
+            "type": "string",
+            "pattern": "^-?[0-9]{1,12}(?:\\.[0-9]{1,2})?$"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "currency",
+          "openingDate",
+          "openingBalance"
+        ],
+        "additionalProperties": false
+      },
+      "FinancialAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "brokerage"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "openingDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "openingBalance": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "currency",
+          "openingDate",
+          "openingBalance",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "FinancialAccountsResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinancialAccount"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "currency": {
+                "type": "string",
+                "enum": [
+                  "SGD"
+                ]
+              },
+              "balance": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "income": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "expenses": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              }
+            },
+            "required": [
+              "currency",
+              "balance",
+              "income",
+              "expenses"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "accounts",
+          "summary"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "InvalidRequest": {
+        "description": "The request is invalid.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "invalid_request"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "A valid Supabase access token is required.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "unauthenticated"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The signed-in identity is outside the configured workspace.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "forbidden"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "UnexpectedError": {
+        "description": "The API failed to process the request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "error"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "AuthUnavailable": {
+        "description": "Supabase Auth is unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "unavailable"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
             }
           }
         }

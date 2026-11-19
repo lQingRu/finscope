@@ -27,15 +27,21 @@ jobs:
           package-manager-cache: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - run: pnpm install --frozen-lockfile
+      - run: docker compose up -d --wait db
       - run: pnpm check
+        env:
+          FINSCOPE_TEST_DATABASE_URL: postgresql://finscope:finscope@127.0.0.1:5432/finscope
       - run: pnpm build
       - run: docker build --load --tag finscope-api:ci .
-      - name: Start PostgreSQL and verify the API image
+      - name: Verify the API image against PostgreSQL
         run: |
-          docker compose up -d --wait db
           docker run --detach --name finscope-ci-api --network host \
             --env DATABASE_URL=postgresql://finscope:finscope@127.0.0.1:5432/finscope \
-            --env CORS_ORIGIN=http://localhost:5173 finscope-api:ci
+            --env CORS_ORIGIN=http://localhost:5173 \
+            --env SUPABASE_URL=https://project.example \
+            --env SUPABASE_PUBLISHABLE_KEY=sb_publishable_test \
+            --env FINSCOPE_OWNER_USER_ID=3f2e88dc-5439-44b8-9d4d-4ef801e47781 \
+            --env FINSCOPE_OWNER_GOOGLE_SUB=123456789012345678901 finscope-api:ci
           curl --fail --silent --show-error --retry 10 --retry-all-errors --retry-delay 1 \
             --max-time 5 http://127.0.0.1:3000/health | jq -e '.status == "ok"'
       - name: Show API and database logs on failure
@@ -56,6 +62,8 @@ jobs:
     env:
       API_ORIGIN: ${{ vars.API_ORIGIN }}
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
       RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
@@ -75,19 +83,27 @@ jobs:
         run: |
           : "${API_ORIGIN:?Set API_ORIGIN}"
           : "${WEB_ORIGIN:?Set WEB_ORIGIN}"
+          : "${SUPABASE_URL:?Set SUPABASE_URL}"
+          : "${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY}"
           : "${CLOUDFLARE_ACCOUNT_ID:?Set CLOUDFLARE_ACCOUNT_ID}"
           : "${CLOUDFLARE_PAGES_PROJECT:?Set CLOUDFLARE_PAGES_PROJECT}"
           : "${RENDER_SERVICE_ID:?Set RENDER_SERVICE_ID}"
           : "${CLOUDFLARE_API_TOKEN:?Set CLOUDFLARE_API_TOKEN}"
           : "${RENDER_API_KEY:?Set RENDER_API_KEY}"
-          if [[ ! "$API_ORIGIN" =~ ^https://[a-zA-Z0-9.-]+$ || ! "$WEB_ORIGIN" =~ ^https://[a-zA-Z0-9.-]+$ ]]; then
-            echo 'API_ORIGIN and WEB_ORIGIN must be HTTPS origins without a trailing slash.' >&2
+          if [[ ! "$API_ORIGIN" =~ ^https://[a-zA-Z0-9.-]+$ || ! "$WEB_ORIGIN" =~ ^https://[a-zA-Z0-9.-]+$ || ! "$SUPABASE_URL" =~ ^https://[a-zA-Z0-9.-]+$ ]]; then
+            echo 'API_ORIGIN, WEB_ORIGIN and SUPABASE_URL must be HTTPS origins without a trailing slash.' >&2
+            exit 1
+          fi
+          if [[ ! "$SUPABASE_PUBLISHABLE_KEY" =~ ^sb_publishable_[a-zA-Z0-9_-]+$ ]]; then
+            echo 'Set SUPABASE_PUBLISHABLE_KEY to the Supabase publishable key.' >&2
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
       - name: Build for production
         env:
           VITE_API_URL: ${{ vars.API_ORIGIN }}
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
         run: pnpm build
       - name: Deploy API on Render
         env:
@@ -100,6 +116,12 @@ jobs:
             "$API_ORIGIN/health" | jq -e '.status == "ok"'
           tr -d '\r' < "$RUNNER_TEMP/api-health-headers" |
             grep -Fiqx "access-control-allow-origin: $WEB_ORIGIN"
+      - name: Verify unauthenticated financial reads and writes are denied
+        run: |
+          test "$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' \
+            "$API_ORIGIN/financial-accounts")" = 401
+          test "$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' --data '{}' "$API_ORIGIN/financial-accounts")" = 401
       - name: Deploy frontend on Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

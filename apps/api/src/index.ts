@@ -3,6 +3,9 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { z } from "zod";
 import { createApi } from "./app.ts";
+import { migrateDatabase } from "./database.ts";
+import { createOwnerAuthorizer } from "./financial-accounts/authorization.ts";
+import { createFinancialAccountRepository } from "./financial-accounts/repository.ts";
 import { configureTelemetry, flushTelemetry, reportError } from "./telemetry.ts";
 
 const envSchema = z.object({
@@ -10,6 +13,10 @@ const envSchema = z.object({
   CORS_ORIGIN: z
     .url({ protocol: /^https?$/ })
     .refine((value) => URL.parse(value)?.origin === value),
+  SUPABASE_URL: z.url({ protocol: /^https$/ }).refine((value) => URL.parse(value)?.origin === value),
+  SUPABASE_PUBLISHABLE_KEY: z.string().regex(/^sb_publishable_[a-zA-Z0-9_-]+$/),
+  FINSCOPE_OWNER_USER_ID: z.uuid().toLowerCase(),
+  FINSCOPE_OWNER_GOOGLE_SUB: z.string().regex(/^[0-9]+$/),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   SENTRY_DSN: z.union([
     z.url({ protocol: /^https?$/, normalize: true }).refine((value) => {
@@ -65,6 +72,15 @@ const api = await createApi({
   checkDatabase: async () => {
     await db.execute(sql`select 1`);
   },
+  accounts: {
+    authorize: createOwnerAuthorizer({
+      supabaseUrl: config.SUPABASE_URL,
+      supabasePublishableKey: config.SUPABASE_PUBLISHABLE_KEY,
+      ownerUserId: config.FINSCOPE_OWNER_USER_ID,
+      ownerGoogleSubject: config.FINSCOPE_OWNER_GOOGLE_SUB,
+    }),
+    repository: createFinancialAccountRepository(db),
+  },
   corsOrigin: config.CORS_ORIGIN,
   reportError,
 });
@@ -74,6 +90,7 @@ pool.on("error", () => {
 });
 
 try {
+  await migrateDatabase(pool);
   await api.listen({ host: "0.0.0.0", port: config.PORT });
 } catch (error) {
   api.log.error("API startup failed");

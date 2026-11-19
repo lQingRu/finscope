@@ -2,20 +2,27 @@ import cors from "@fastify/cors";
 import { healthResponses } from "@finscope/contracts/health";
 import Fastify, { LogController } from "fastify";
 import { z } from "zod";
+import { financialAccountRoutes } from "./financial-accounts/routes.ts";
+import type { FinancialAccountsOptions } from "./financial-accounts/routes.ts";
 
 type ApiOptions = {
   checkDatabase: () => Promise<void>;
   corsOrigin: string;
   reportError: (error: Error) => void;
+  accounts?: FinancialAccountsOptions;
 };
 
-export async function createApi({ checkDatabase, corsOrigin, reportError }: ApiOptions) {
+export async function createApi({ checkDatabase, corsOrigin, reportError, accounts }: ApiOptions) {
   const api = Fastify({
     logger: true,
     logController: new LogController({ disableRequestLogging: true }),
   });
 
-  await api.register(cors, { origin: [corsOrigin], methods: ["GET"] });
+  await api.register(cors, {
+    origin: [corsOrigin],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Authorization", "Content-Type"],
+  });
 
   api.addHook("onResponse", async (request, reply) => {
     request.log.info(
@@ -60,6 +67,10 @@ export async function createApi({ checkDatabase, corsOrigin, reportError }: ApiO
       return reply.send(healthResponses[200].parse({ status: "ok" }));
     },
   });
+
+  if (accounts) {
+    await api.register(financialAccountRoutes, accounts);
+  }
 
   return api;
 }
