@@ -1,3 +1,4 @@
+import { healthResponses } from "@finscope/contracts/health";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   createRootRoute,
@@ -18,17 +19,19 @@ function ServiceStatus() {
     queryKey: ["service-health"],
     queryFn: async ({ signal }) => {
       const response = await fetch(new URL("/health", apiUrl), { signal });
-      if (!response.ok) {
-        throw new Error("API unavailable");
+      if (response.status === 200) {
+        return healthResponses[200].parse(await response.json());
       }
-      const body: { status?: unknown } | null = await response.json();
-      return body?.status === "ok";
+      if (response.status === 503) {
+        healthResponses[503].parse(await response.json());
+      }
+      throw new Error("API unavailable");
     },
     retry: 1,
     retryDelay: 2_000,
   });
 
-  const ready = health.isSuccess && health.data === true;
+  const ready = health.isSuccess;
   const status = health.isFetching ? "Checking connection…" : ready ? "Operational" : "Unavailable";
   const statusColor = health.isFetching ? "bg-slate-500" : ready ? "bg-emerald-700" : "bg-amber-700";
 

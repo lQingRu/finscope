@@ -13,7 +13,7 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
 ```
 
-Start `pnpm --filter @finscope/api dev` and `pnpm --filter @finscope/web dev` in separate terminals. Open [the local site](http://localhost:5173) or check the API at `http://localhost:3000/health`. The health endpoint returns HTTP 200 with `{"status":"ok"}` when the API can query PostgreSQL and HTTP 503 when the database is unavailable.
+Start `pnpm --filter @finscope/api dev` and `pnpm --filter @finscope/web dev` in separate terminals. Open [the local site](http://localhost:5173) or check the API at `http://localhost:3000/health`. The health endpoint returns HTTP 200 with `{"status":"ok"}` when the API can query PostgreSQL and HTTP 503 with `{"status":"unavailable"}` when the database is unavailable. See the [OpenAPI contract](openapi.json).
 
 ## Provision production
 
@@ -37,13 +37,13 @@ Start `pnpm --filter @finscope/api dev` and `pnpm --filter @finscope/web dev` in
 | GitHub production variable | `API_ORIGIN` | Render HTTPS origin |
 | GitHub production variable | `WEB_ORIGIN` | Pages production HTTPS origin, matching `CORS_ORIGIN` |
 
-Use origins without paths or trailing slashes. Render provides `PORT`. The workflow passes the public API origin to Vite as `VITE_API_URL` at build time. Keep credentials in platform settings.
+Use origins without paths or trailing slashes. Render provides `PORT` and sets `RENDER=true`. The API requires `SENTRY_DSN` on Render and verifies that the SDK can configure a client at startup. The DSN is optional for local development and the GitHub Actions smoke test. The workflow passes the public API origin to Vite as `VITE_API_URL` at build time. Keep credentials in platform settings.
 
 ## Release and verify
 
 Open **Actions → Verify and deploy → Run workflow** and select `main`. Pull requests and pushes to `main` run the verification job. A manual run on `main` also builds the production assets, deploys the selected commit on Render, checks API readiness and CORS, publishes the assets to Pages, and checks the production site responds. Releases run one at a time.
 
-Open the production Pages URL and confirm it reports the service is connected. Open the Render service logs and verify the readiness requests produced structured Pino logs. Check the Sentry project and Render's DSN setting. During first setup, verify Sentry delivery with a test event sent through the project's SDK setup instructions. Sentry reports unexpected API errors when configured.
+Open the production Pages URL and confirm it shows **Operational**. Open the Render service logs and verify the readiness requests produced structured Pino logs. Confirm that Render's `SENTRY_DSN` matches the intended Sentry project. To verify event delivery from FinScope, check that an unexpected API error recorded in the Render logs has a corresponding event in Sentry for the deployed release.
 
 If the API stays unavailable, inspect Render logs and confirm the Supabase project is active and the session pooler URI is valid. If CORS fails, compare the Pages origin with `CORS_ORIGIN` and `WEB_ORIGIN`. After correcting configuration, rerun the workflow on `main`.
 

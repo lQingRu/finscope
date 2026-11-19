@@ -11,10 +11,26 @@ const envSchema = z.object({
     .url({ protocol: /^https?$/ })
     .refine((value) => URL.parse(value)?.origin === value),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  SENTRY_DSN: z.union([z.url({ protocol: /^https?$/ }), z.literal("")]).optional(),
+  SENTRY_DSN: z.union([
+    z.url({ protocol: /^https?$/, normalize: true }).refine((value) => {
+      const dsn = URL.parse(value);
+      return (
+        dsn !== null &&
+        /^\w+$/.test(dsn.username) &&
+        /^\w*$/.test(dsn.password) &&
+        /\/\d+$/.test(dsn.pathname) &&
+        !dsn.search &&
+        !dsn.hash
+      );
+    }),
+    z.literal(""),
+  ]).optional(),
+  RENDER: z.string().optional(),
   NODE_ENV: z.string().default("development"),
   RELEASE: z.string().optional(),
   RENDER_GIT_COMMIT: z.string().optional(),
+}).refine((config) => config.RENDER !== "true" || Boolean(config.SENTRY_DSN), {
+  path: ["SENTRY_DSN"],
 });
 
 const env = envSchema.safeParse(process.env);
@@ -25,11 +41,17 @@ if (!env.success) {
 }
 
 const config = env.data;
-configureTelemetry({
-  dsn: config.SENTRY_DSN,
-  environment: config.NODE_ENV,
-  release: config.RELEASE ?? config.RENDER_GIT_COMMIT,
-});
+if (config.SENTRY_DSN) {
+  const configured = configureTelemetry({
+    dsn: config.SENTRY_DSN,
+    environment: config.NODE_ENV,
+    release: config.RELEASE ?? config.RENDER_GIT_COMMIT,
+  });
+  if (!configured) {
+    console.error("Could not configure Sentry with SENTRY_DSN");
+    process.exit(1);
+  }
+}
 
 const pool = new Pool({
   connectionString: config.DATABASE_URL,

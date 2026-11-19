@@ -1,15 +1,11 @@
 import * as Sentry from "@sentry/node";
 
 export function configureTelemetry(options: {
-  dsn: string | undefined;
+  dsn: string;
   environment: string;
   release: string | undefined;
 }) {
-  if (!options.dsn) {
-    return;
-  }
-
-  Sentry.init({
+  const client = Sentry.init({
     ...options,
     serverName: "finscope-api",
     defaultIntegrations: false,
@@ -36,6 +32,7 @@ export function configureTelemetry(options: {
       };
     },
   });
+  return Boolean(client?.getDsn() && client.getTransport());
 }
 
 export function reportError(error: Error) {

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@finscope/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.0",
     "@tanstack/react-router": "^1.150.0",
     "react": "^19.2.0",

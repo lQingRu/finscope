@@ -13,6 +13,9 @@ importers:
       '@fastify/cors':
         specifier: ^11.2.0
         version: 11.4.3
+      '@finscope/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@sentry/node':
         specifier: ^10.40.0
         version: 10.78.0(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))
@@ -41,6 +44,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@finscope/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@tanstack/react-query':
         specifier: ^5.90.0
         version: 5.108.0(@types/react@19.3.0)(react@19.3.1)
@@ -75,6 +81,12 @@ importers:
       vite:
         specifier: ^8.0.0
         version: 8.3.8(@types/node@26.6.6)(jiti@2.7.0)
+
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: ^4.3.0
+        version: 4.6.7
 
 packages:
 

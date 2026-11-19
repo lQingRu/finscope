@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@finscope/contracts": "workspace:*",
     "@fastify/cors": "^11.2.0",
     "@sentry/node": "^10.40.0",
     "drizzle-orm": "^0.45.1",

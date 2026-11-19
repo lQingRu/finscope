@@ -1,0 +1,11 @@
+{
+  "name": "@finscope/contracts",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./health": "./health.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.0"
+  }
+}

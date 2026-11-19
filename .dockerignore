@@ -11,5 +11,9 @@
 !apps/api/src/**
 !apps/web/
 !apps/web/package.json
+!packages/
+!packages/contracts/
+!packages/contracts/package.json
+!packages/contracts/health.ts
 **/.env*
 **/supabase-ca.crt
