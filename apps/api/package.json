@@ -1,0 +1,25 @@
+{
+  "name": "@finscope/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "node --env-file-if-exists=.env --watch src/index.ts",
+    "start": "node --env-file-if-exists=.env --enable-source-maps dist/index.js",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@sentry/node": "^10.40.0",
+    "drizzle-orm": "^0.45.1",
+    "fastify": "^5.7.0",
+    "pg": "^8.17.0",
+    "zod": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/pg": "^8.16.0",
+    "typescript": "^6.0.0"
+  }
+}

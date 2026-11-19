@@ -1,0 +1,15 @@
+**
+!Dockerfile
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps/
+!apps/api/
+!apps/api/package.json
+!apps/api/tsconfig*.json
+!apps/api/src/
+!apps/api/src/**
+!apps/web/
+!apps/web/package.json
+**/.env*
+**/supabase-ca.crt
