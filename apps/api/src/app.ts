@@ -21,7 +21,7 @@ export async function createApi({ checkDatabase, corsOrigin, reportError, accoun
 
   await api.register(cors, {
     origin: [corsOrigin],
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PATCH"],
     allowedHeaders: ["Authorization", "Content-Type"],
   });
 

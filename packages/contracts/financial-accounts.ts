@@ -4,23 +4,46 @@ import { z } from "zod";
 export const accountTypes = ["bank", "brokerage"] as const;
 export const zeroSgd = "0.00";
 
-// PostgreSQL numeric(14, 2) stores twelve whole digits and two fractional digits.
-export const openFinancialAccount = z.strictObject({
+const singaporeDate = new Intl.DateTimeFormat("en", {
+  timeZone: "Asia/Singapore",
+  calendar: "gregory",
+  numberingSystem: "latn",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const calendarDate = z.iso.date("Enter a valid opening date.").refine(
+  (date) => !date.startsWith("0000-"),
+  "Enter an opening date in year 1 or later.",
+);
+
+const accountDetails = z.strictObject({
   name: z.string().trim().min(1, "Enter an account name.").max(100),
-  type: z.enum(accountTypes),
-  currency: z.literal("SGD"),
-  openingDate: z.iso.date("Enter a valid opening date.").refine(
-    (date) => !date.startsWith("0000-"),
-    "Enter an opening date in year 1 or later.",
-  ),
+  openingDate: calendarDate,
+  // PostgreSQL numeric(14, 2) stores twelve whole digits and two fractional digits.
   openingBalance: z.string().regex(
     /^-?[0-9]{1,12}(?:\.[0-9]{1,2})?$/,
     "Enter an SGD amount with up to 12 whole digits and 2 decimal places.",
   ),
 });
+const accountKind = {
+  type: z.enum(accountTypes),
+  currency: z.literal("SGD"),
+};
+
+export const correctFinancialAccount = accountDetails.extend({
+  openingDate: calendarDate.refine((date) => {
+    const { year, month, day } = Object.fromEntries(
+      singaporeDate.formatToParts(new Date()).map(({ type, value }) => [type, value]),
+    );
+    return date <= `${year}-${month}-${day}`;
+  }, "Enter an opening date on or before today in Singapore."),
+});
+export const openFinancialAccount = correctFinancialAccount.extend(accountKind);
 
 const sgdAmount = z.string().regex(/^-?(?:0|[1-9][0-9]*)\.[0-9]{2}$/);
-const financialAccount = openFinancialAccount.extend({
+const financialAccount = accountDetails.extend({
+  ...accountKind,
   id: z.uuid(),
   openingBalance: sgdAmount,
 });
@@ -37,6 +60,7 @@ const financialAccounts = z.strictObject({
 
 export const financialAccountErrors = {
   ...apiErrorResponses,
+  400: apiErrorResponses[400].extend({ openingDateError: z.string().optional() }),
   401: z.object({ status: z.literal("unauthenticated") }),
   403: z.object({ status: z.literal("forbidden") }),
   503: z.object({ status: z.literal("unavailable") }),
@@ -45,7 +69,13 @@ export const financialAccountErrors = {
 export const financialAccountResponses = {
   list: { 200: financialAccounts, ...financialAccountErrors },
   open: { 201: financialAccount, ...financialAccountErrors },
+  correct: {
+    200: financialAccount,
+    ...financialAccountErrors,
+    404: z.object({ status: z.literal("not_found") }),
+  },
 };
 
 export type OpenFinancialAccount = z.infer<typeof openFinancialAccount>;
 export type FinancialAccount = z.infer<typeof financialAccount>;
+export type CorrectFinancialAccount = z.infer<typeof correctFinancialAccount>;
