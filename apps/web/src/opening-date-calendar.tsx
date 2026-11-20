@@ -1,4 +1,5 @@
 import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
+import type { CSSProperties } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
@@ -53,7 +54,7 @@ export function OpeningDateCalendar({ value, onSelect }: {
         className="m-auto max-h-[90dvh] max-w-[calc(100%-1rem)] overflow-auto rounded-xl p-4 shadow-lg backdrop:bg-black/40">
         <h3 id={titleId} className="mb-3 font-semibold">Choose opening date</h3>
         <DayPicker
-          className="max-[380px]:[--rdp-day-width:36px] max-[380px]:[--rdp-day_button-width:34px]"
+          style={{ "--rdp-day-width": "38px", "--rdp-day_button-width": "36px" } as CSSProperties}
           key={selected?.toISOString() ?? "no-date"}
           mode="single"
           timeZone="UTC"
