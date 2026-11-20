@@ -69,7 +69,28 @@ Use origins without paths or trailing slashes. Render provides `PORT` and sets `
 
 ## Release and verify
 
-Open **Actions → Verify and deploy → Run workflow** and select `main`. Pull requests and pushes to `main` run the verification job. A manual run on `main` also builds the production assets, deploys the selected commit on Render, checks API readiness, CORS and signed-out denial, publishes the assets to Pages, and checks the production site responds. Releases run one at a time.
+The [Verify and deploy workflow](../.github/workflows/deployment.yml) runs different jobs depending on how it starts.
+
+| Trigger | Jobs that run |
+| --- | --- |
+| Open or update a pull request | `verify` checks the change before merge. Find the result in the pull request's **Checks** tab. |
+| Push or merge into `main` | `verify` checks the resulting commit on `main`. |
+| Run the workflow manually on a feature branch | `verify` checks the selected branch. |
+| Run the workflow manually on `main` | `verify` runs first, then `deploy` releases the selected commit to production if verification passes. |
+
+### Before merge
+
+Open a pull request and wait for the **verify** job to pass before merging. The job installs dependencies from the lockfile, starts PostgreSQL on the runner, runs `pnpm check` to type-check the frontend and API and run the API tests, and builds the application. It also builds and starts the API Docker image and checks that `/health` reports a working database connection.
+
+CI uses a disposable PostgreSQL database and test authentication fixtures. The current workflow provides verification on the runner and a separate production deployment. Testing real Google sign-in against a deployed branch before merge would require a separate staging environment.
+
+### Deploy from main
+
+After merging, open **Actions → Verify and deploy → Run workflow**, select `main`, and wait for **deploy** to succeed. The job builds the frontend with production settings and deploys the selected commit to Render. It checks API readiness, CORS for the production Pages origin, and HTTP 401 responses for signed-out account-list and account-creation requests. It then publishes the frontend to Cloudflare Pages and checks that the site responds. Releases run one at a time.
+
+### After deployment
+
+Run any issue-specific live checks after **deploy** succeeds. Use the test results recorded on the implementation issue for behaviour already verified. Follow the linked owner checklist for remaining checks that require live access, such as real Google sign-in, persistence across a new session, or direct API requests with real identities. Record the workflow run link and results in the verification issue.
 
 Open the production Pages URL and confirm it offers **Continue with Google**. Open the Render service logs and verify the readiness requests produced structured Pino logs. Confirm that Render's `SENTRY_DSN` matches the intended Sentry project. To verify event delivery from FinScope, check that an unexpected API error recorded in the Render logs has a corresponding event in Sentry for the deployed release.
 
