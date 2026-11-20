@@ -1,5 +1,5 @@
-import { accountTypes, openFinancialAccount } from "@finscope/contracts/financial-accounts";
-import type { FinancialAccount, OpenFinancialAccount } from "@finscope/contracts/financial-accounts";
+import { accountTypes, correctFinancialAccount } from "@finscope/contracts/financial-accounts";
+import type { CorrectFinancialAccount, FinancialAccount } from "@finscope/contracts/financial-accounts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Session } from "@supabase/supabase-js";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,7 +26,8 @@ const dateFormat = new Intl.DateTimeFormat("en-SG", {
 });
 
 const accountTypeLabels = { bank: "Bank", brokerage: "Brokerage" };
-const emptyForm = { name: "", type: "bank", currency: "SGD", openingDate: "", openingBalance: "" } as const;
+const emptyForm = { name: "", openingDate: "", openingBalance: "" };
+const defaultAccountType = "bank";
 
 export const accountsQueryKey = ["financial-accounts"] as const;
 
@@ -115,17 +116,16 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
   const queryClient = useQueryClient();
   const id = useId();
   const [notice, setNotice] = useState("");
+  const [accountType, setAccountType] = useState<FinancialAccount["type"]>(defaultAccountType);
   const {
     register, handleSubmit, reset, setError, setFocus, formState: { errors },
-  } = useForm<OpenFinancialAccount>({
+  } = useForm<CorrectFinancialAccount>({
     defaultValues: account ? {
       name: account.name,
-      type: account.type,
-      currency: account.currency,
       openingDate: account.openingDate,
       openingBalance: account.openingBalance,
     } : emptyForm,
-    resolver: zodResolver(openFinancialAccount),
+    resolver: zodResolver(correctFinancialAccount),
   });
 
   const editing = Boolean(account);
@@ -134,16 +134,13 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
   }, [editing, setFocus]);
 
   const save = useMutation({
-    mutationFn: (input: OpenFinancialAccount) => account
-      ? correctAccount(token, account.id, {
-        name: input.name,
-        openingDate: input.openingDate,
-        openingBalance: input.openingBalance,
-      })
-      : openAccount(token, input),
+    mutationFn: (input: CorrectFinancialAccount) => account
+      ? correctAccount(token, account.id, input)
+      : openAccount(token, { ...input, type: accountType, currency: "SGD" }),
     onSuccess: async (saved) => {
       if (!account) {
         reset(emptyForm);
+        setAccountType(defaultAccountType);
         setNotice(`${saved.name} was opened.`);
       }
       await queryClient.invalidateQueries({ queryKey });
@@ -177,13 +174,11 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
         ? <h4 id={`${id}-heading`} className="text-base font-semibold">{heading}</h4>
         : <h2 id={`${id}-heading`} className="text-lg font-semibold">{heading}</h2>}
       <form className="mt-5 grid gap-4" noValidate onSubmit={handleSubmit((input) => save.mutate(input))}>
-        <input type="hidden" {...register("currency")} />
         <div className="grid gap-1.5">
           <label htmlFor={`${id}-account-name`} className="text-sm font-semibold">Account name</label>
           <input
             id={`${id}-account-name`}
             className={inputStyle}
-            maxLength={100}
             autoComplete="off"
             aria-invalid={Boolean(errors.name)}
             aria-describedby={errors.name ? `${id}-account-name-error` : undefined}
@@ -191,10 +186,18 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
           />
           {errors.name && <p id={`${id}-account-name-error`} className="text-sm text-[#8f3023]">{errors.name.message}</p>}
         </div>
-        {account ? <input type="hidden" {...register("type")} /> : (
+        {!account && (
           <div className="grid gap-1.5">
             <label htmlFor={`${id}-account-type`} className="text-sm font-semibold">Account type</label>
-            <select id={`${id}-account-type`} className={inputStyle} {...register("type")}>
+            <select
+              id={`${id}-account-type`}
+              className={inputStyle}
+              value={accountType}
+              onChange={(event) => {
+                const type = accountTypes.find((type) => type === event.currentTarget.value);
+                if (type) setAccountType(type);
+              }}
+            >
               {accountTypes.map((type) => (
                 <option key={type} value={type}>{accountTypeLabels[type]}</option>
               ))}

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { correctFinancialAccount, openFinancialAccount } from "@finscope/contracts/financial-accounts";
 import { test, vi } from "vitest";
 import { createApi } from "../src/app.ts";
 import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
@@ -122,17 +124,18 @@ test("an owner can correct an account in place and see the new opening balance a
       ownerGoogleSubject,
     }, async () => Response.json(providerUser(userId, ownerGoogleSubject)));
 
+    const repository = createFinancialAccountRepository(drizzle(pool));
     const app = await createApi({
       checkDatabase: async () => {},
       corsOrigin: "https://finscope.pages.dev",
       reportError: assert.fail,
-      accounts: { authorize, repository: createFinancialAccountRepository(drizzle(pool)) },
+      accounts: { authorize, repository },
     });
     onTestFinished(() => app.close());
-    return app;
+    return { app, repository };
   }
 
-  const first = await startApi();
+  const { app: first, repository } = await startApi();
   const brokerage = {
     name: "Brokerage",
     type: "brokerage",
@@ -169,6 +172,9 @@ test("an owner can correct an account in place and see the new opening balance a
     openingBalance: "3250.00",
   };
   assert.deepEqual(correction.json(), corrected);
+  const withImmutableFields = { ...corrected, id: randomUUID(), ownerUserId: randomUUID(), type: "brokerage" };
+  assert.deepEqual(await repository.correct(workspaceOwner, ids[0], withImmutableFields), corrected);
+
   const rejectedCorrection = await first.inject({
     method: "PATCH",
     url: `/financial-accounts/${ids[0]}`,
@@ -179,7 +185,7 @@ test("an owner can correct an account in place and see the new opening balance a
   await first.close();
 
   const otherUserId = randomUUID();
-  const otherWorkspace = await startApi(otherUserId);
+  const { app: otherWorkspace } = await startApi(otherUserId);
   const otherCorrection = await otherWorkspace.inject({
     method: "PATCH",
     url: `/financial-accounts/${ids[0]}`,
@@ -189,7 +195,7 @@ test("an owner can correct an account in place and see the new opening balance a
   assert.equal(otherCorrection.statusCode, 404);
   assert.deepEqual(otherCorrection.json(), { status: "not_found" });
 
-  const second = await startApi();
+  const { app: second } = await startApi();
   const response = await second.inject({ method: "GET", url: "/financial-accounts", headers });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), {
@@ -227,16 +233,37 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     ["POST", "/financial-accounts", openingAccount, 201],
     ["PATCH", `/financial-accounts/${accountId}`, corrected, 200],
   ] as const) {
-    for (const openingDate of ["2026-11-19", "2026-11-20"]) {
+    for (const openingDate of ["0001-01-01", "2026-11-19", "2026-11-20"]) {
       const response = await app.inject({ method, url, payload: { ...fields, openingDate } });
       assert.equal(response.statusCode, successStatus);
       assert.equal(response.json().openingDate, openingDate);
     }
-    for (const openingDate of ["2026-11-21", "2026-11-31"]) {
+    for (const openingDate of ["0000-02-29", "2026-11-21", "2026-11-31"]) {
       const response = await app.inject({ method, url, payload: { ...fields, openingDate } });
       assert.equal(response.statusCode, 400);
       assert.equal(response.json().status, "invalid_request");
       assert.match(response.json().openingDateError, /opening date/i);
+    }
+  }
+});
+
+test("OpenAPI reflects the account name and calendar date validation", async () => {
+  const spec = JSON.parse(await readFile(new URL("../../../docs/openapi.json", import.meta.url), "utf8"));
+  const correction = { name: "Savings", openingBalance: "3000.00", openingDate: "2000-01-01" };
+  for (const [key, schema, input] of [
+    ["OpenFinancialAccount", openFinancialAccount, { ...openingAccount, ...correction }],
+    ["CorrectFinancialAccount", correctFinancialAccount, correction],
+  ] as const) {
+    const fields = spec.components.schemas[key].properties;
+    for (const [field, values] of [
+      ["name", [" \t ", " A ", ` ${"A".repeat(100)} `, "A".repeat(101)]],
+      ["openingDate", ["0000-02-29", "0001-01-01", "1900-02-29", "2000-02-29"]],
+    ] as const) {
+      const { pattern, minLength = 0, maxLength = Infinity } = fields[field];
+      for (const value of values) {
+        const documented = new RegExp(pattern).test(value) && value.length >= minLength && value.length <= maxLength;
+        assert.equal(documented, schema.safeParse({ ...input, [field]: value }).success, `${key}.${field} ${JSON.stringify(value)}`);
+      }
     }
   }
 });
