@@ -35,6 +35,12 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
       }).returning(publicColumns);
       return { ...row, currency: "SGD" };
     },
+    async delete(ownerUserId, accountId) {
+      const [removed] = await db.delete(accounts)
+        .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, accountId)))
+        .returning({ id: accounts.id });
+      return Boolean(removed);
+    },
     async correct(ownerUserId, accountId, { name, openingDate, openingBalance }) {
       const [row] = await db.update(accounts).set({ name, openingDate, openingBalance })
         .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, accountId)))

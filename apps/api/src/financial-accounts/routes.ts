@@ -17,6 +17,7 @@ import { summarizeFinancialAccounts } from "./summary.ts";
 export type FinancialAccountRepository = {
   list: (ownerUserId: string) => Promise<FinancialAccount[]>;
   open: (ownerUserId: string, account: OpenFinancialAccount) => Promise<FinancialAccount>;
+  delete: (ownerUserId: string, accountId: string) => Promise<boolean>;
   correct: (ownerUserId: string, accountId: string, input: CorrectFinancialAccount) => Promise<FinancialAccount | undefined>;
 };
 
@@ -69,6 +70,19 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
 
     const account = await repository.open(request.getDecorator<string>("workspaceOwnerId"), input.data);
     return reply.code(201).send(financialAccountResponses.open[201].parse(account));
+  });
+
+  api.delete("/financial-accounts/:accountId", async (request, reply) => {
+    const params = accountParams.safeParse(request.params);
+    if (!params.success) {
+      return reply.code(400).send(financialAccountResponses.delete[400].parse({ status: "invalid_request" }));
+    }
+
+    const removed = await repository.delete(request.getDecorator<string>("workspaceOwnerId"), params.data.accountId);
+    if (!removed) {
+      return reply.code(404).send(financialAccountResponses.delete[404].parse({ status: "not_found" }));
+    }
+    return reply.code(204).send();
   });
 
   api.patch("/financial-accounts/:accountId", async (request, reply) => {

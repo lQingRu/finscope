@@ -1,3 +1,4 @@
+import { OpeningDateCalendar } from "./opening-date-calendar";
 import { accountTypes, correctFinancialAccount } from "@finscope/contracts/financial-accounts";
 import type { CorrectFinancialAccount, FinancialAccount } from "@finscope/contracts/financial-accounts";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -5,7 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { AccountApiError, correctAccount, isAccessError, listAccounts, openAccount } from "./account-api";
+import { AccountApiError, correctAccount, deleteAccount, isAccessError, listAccounts, openAccount } from "./account-api";
 import { Button } from "./components/ui/button";
 
 const amountFormat = new Intl.NumberFormat("en-SG", {
@@ -38,6 +39,23 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
   const [notice, setNotice] = useState("");
   const editButton = useRef<HTMLButtonElement>(null);
 
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const deleteTitle = useId();
+  const queryClient = useQueryClient();
+  const removal = useMutation({
+    mutationFn: () => deleteAccount(token, account.id),
+    onSuccess: async () => {
+      deleteDialog.current?.close();
+      await queryClient.invalidateQueries({ queryKey });
+      document.getElementById("accounts-heading")?.focus();
+    },
+    onError: async (error) => {
+      if (isAccessError(error) || (error instanceof AccountApiError && error.status === 404)) {
+        await queryClient.invalidateQueries({ queryKey });
+      }
+    },
+  });
+
   function finishEditing() {
     setEditing(false);
     editButton.current?.focus();
@@ -67,8 +85,24 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
           >
             Edit
           </Button>
+          <Button type="button" variant="outline" aria-label={`Delete ${account.name}`} disabled={editing} onClick={() => {
+            removal.reset();
+            deleteDialog.current?.showModal();
+          }}>Delete</Button>
         </div>
       </div>
+      <dialog ref={deleteDialog} aria-labelledby={deleteTitle} className="m-auto w-full max-w-sm rounded-xl p-5 shadow-lg backdrop:bg-black/40"
+        onCancel={(event) => { if (removal.isPending) event.preventDefault(); }}>
+        <h4 id={deleteTitle} className="font-semibold">Delete {account.name}?</h4>
+        <p className="my-3 text-sm">This permanently deletes the account and removes its opening balance from total cash.</p>
+        {removal.isError && <p role="alert" className="mb-3 text-sm">The deletion could not be confirmed. Check the account list before trying again.</p>}
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" autoFocus disabled={removal.isPending} onClick={() => deleteDialog.current?.close()}>Cancel</Button>
+          <Button type="button" disabled={removal.isPending} onClick={() => removal.mutate()}>
+            {removal.isPending ? "Deleting…" : "Delete account"}
+          </Button>
+        </div>
+      </dialog>
       {editing && (
         <AccountForm
           account={account}
@@ -89,7 +123,7 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
 function AccountList({ accounts, token, queryKey }: AccountFormContext & { accounts: FinancialAccount[] }) {
   return (
     <section aria-labelledby="accounts-heading">
-      <h2 id="accounts-heading" className="mb-3 text-lg font-semibold">Financial accounts</h2>
+      <h2 id="accounts-heading" tabIndex={-1} className="mb-3 text-lg font-semibold">Financial accounts</h2>
       {accounts.length === 0 ? (
         <p className="rounded-xl border border-dashed border-[#c6d5cc] px-5 py-7 text-sm text-[#495e55]">
           No financial accounts yet. Open a bank or brokerage account to start tracking your balances.
@@ -118,7 +152,7 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
   const [notice, setNotice] = useState("");
   const [accountType, setAccountType] = useState<FinancialAccount["type"]>(defaultAccountType);
   const {
-    register, handleSubmit, reset, setError, setFocus, formState: { errors },
+    register, handleSubmit, reset, setError, setFocus, setValue, watch, formState: { errors },
   } = useForm<CorrectFinancialAccount>({
     defaultValues: account ? {
       name: account.name,
@@ -208,12 +242,16 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
           <label htmlFor={`${id}-opening-date`} className="text-sm font-semibold">Opening date</label>
           <input
             id={`${id}-opening-date`}
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             className={inputStyle}
             aria-invalid={Boolean(errors.openingDate)}
             aria-describedby={errors.openingDate ? `${id}-opening-date-error` : undefined}
             {...register("openingDate")}
           />
+          <OpeningDateCalendar value={watch("openingDate")} onSelect={(date) => {
+            setValue("openingDate", date, { shouldDirty: true, shouldValidate: true });
+          }} />
           {errors.openingDate && <p id={`${id}-opening-date-error`} className="text-sm text-[#8f3023]">{errors.openingDate.message}</p>}
         </div>
         <div className="grid gap-1.5">
