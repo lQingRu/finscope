@@ -10,7 +10,7 @@ FROM workspace AS build
 RUN pnpm install --frozen-lockfile --filter '@finscope/api...'
 COPY apps/api/tsconfig*.json apps/api/
 COPY apps/api/src apps/api/src
-COPY packages/contracts/health.ts packages/contracts/health.ts
+COPY packages/contracts/*.ts packages/contracts/
 RUN pnpm --filter @finscope/api build
 
 FROM workspace AS dependencies
@@ -24,7 +24,8 @@ COPY --from=dependencies /workspace/apps/api/node_modules ./apps/api/node_module
 COPY --from=dependencies /workspace/apps/api/package.json ./apps/api/package.json
 COPY --from=build /workspace/apps/api/dist ./apps/api/dist
 COPY --from=dependencies /workspace/packages/contracts/ ./packages/contracts/
-COPY --from=build /workspace/packages/contracts/health.ts ./packages/contracts/health.ts
+COPY --from=build /workspace/packages/contracts/*.ts ./packages/contracts/
+COPY apps/api/drizzle ./apps/api/drizzle
 USER node
 EXPOSE 3000
 CMD ["node", "--enable-source-maps", "apps/api/dist/index.js"]

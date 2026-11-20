@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./health": "./health.ts"
+    "./api-errors": "./api-errors.ts",
+    "./health": "./health.ts",
+    "./financial-accounts": "./financial-accounts.ts"
   },
   "dependencies": {
     "zod": "^4.3.0"

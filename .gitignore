@@ -6,3 +6,4 @@ dist/
 !.env.example
 *.tsbuildinfo
 supabase-ca.crt
+finscope-private.dump

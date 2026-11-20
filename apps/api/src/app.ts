@@ -1,21 +1,29 @@
 import cors from "@fastify/cors";
+import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { healthResponses } from "@finscope/contracts/health";
 import Fastify, { LogController } from "fastify";
 import { z } from "zod";
+import { financialAccountRoutes } from "./financial-accounts/routes.ts";
+import type { FinancialAccountsOptions } from "./financial-accounts/routes.ts";
 
 type ApiOptions = {
   checkDatabase: () => Promise<void>;
   corsOrigin: string;
   reportError: (error: Error) => void;
+  accounts?: FinancialAccountsOptions;
 };
 
-export async function createApi({ checkDatabase, corsOrigin, reportError }: ApiOptions) {
+export async function createApi({ checkDatabase, corsOrigin, reportError, accounts }: ApiOptions) {
   const api = Fastify({
     logger: true,
     logController: new LogController({ disableRequestLogging: true }),
   });
 
-  await api.register(cors, { origin: [corsOrigin], methods: ["GET"] });
+  await api.register(cors, {
+    origin: [corsOrigin],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Authorization", "Content-Type"],
+  });
 
   api.addHook("onResponse", async (request, reply) => {
     request.log.info(
@@ -33,13 +41,13 @@ export async function createApi({ checkDatabase, corsOrigin, reportError }: ApiO
     if (error instanceof Error && "statusCode" in error) {
       const status = error.statusCode;
       if (typeof status === "number" && status >= 400 && status < 500) {
-        return reply.code(status).send({ status: "invalid_request" });
+        return reply.code(status).send(apiErrorResponses[400].parse({ status: "invalid_request" }));
       }
     }
 
     request.log.error({ route: request.routeOptions.url }, "Unexpected API error");
     reportError(error instanceof Error ? error : new Error("Unexpected API error"));
-    return reply.code(500).send({ status: "error" });
+    return reply.code(500).send(apiErrorResponses[500].parse({ status: "error" }));
   });
 
   api.get("/health", {
@@ -60,6 +68,10 @@ export async function createApi({ checkDatabase, corsOrigin, reportError }: ApiO
       return reply.send(healthResponses[200].parse({ status: "ok" }));
     },
   });
+
+  if (accounts) {
+    await api.register(financialAccountRoutes, accounts);
+  }
 
   return api;
 }

@@ -9,11 +9,13 @@
 !apps/api/tsconfig*.json
 !apps/api/src/
 !apps/api/src/**
+!apps/api/drizzle/
+!apps/api/drizzle/**
 !apps/web/
 !apps/web/package.json
 !packages/
 !packages/contracts/
 !packages/contracts/package.json
-!packages/contracts/health.ts
+!packages/contracts/*.ts
 **/.env*
 **/supabase-ca.crt
