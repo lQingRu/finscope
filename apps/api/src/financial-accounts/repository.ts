@@ -1,5 +1,5 @@
 import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { date, numeric, pgSchema, text, uuid, varchar } from "drizzle-orm/pg-core";
 import type { FinancialAccountRepository } from "./routes.ts";
@@ -34,6 +34,12 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
         ownerUserId, name, type, openingDate, openingBalance,
       }).returning(publicColumns);
       return { ...row, currency: "SGD" };
+    },
+    async correct(ownerUserId, accountId, input) {
+      const [row] = await db.update(accounts).set(input)
+        .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, accountId)))
+        .returning(publicColumns);
+      return row && { ...row, currency: "SGD" };
     },
   };
 }

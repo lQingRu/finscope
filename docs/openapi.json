@@ -121,13 +121,75 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/InvalidRequest"
+            "$ref": "#/components/responses/InvalidAccount"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/financial-accounts/{accountId}": {
+      "patch": {
+        "summary": "Correct a financial account's name, opening date, and opening balance",
+        "description": "Updates the existing account in place. Opening balance corrections contribute zero to income and expenses.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectFinancialAccount"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The financial account was corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidAccount"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/AccountNotFound"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -154,7 +216,8 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "description": "Nonblank after trimming surrounding whitespace."
           },
           "type": {
             "type": "string",
@@ -172,7 +235,8 @@
           "openingDate": {
             "type": "string",
             "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "A real calendar date in year 1 or later, on or before today in Asia/Singapore."
           },
           "openingBalance": {
             "type": "string",
@@ -279,6 +343,52 @@
           "summary"
         ],
         "additionalProperties": false
+      },
+      "CorrectFinancialAccount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Nonblank after trimming surrounding whitespace."
+          },
+          "openingDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "A real calendar date in year 1 or later, on or before today in Asia/Singapore."
+          },
+          "openingBalance": {
+            "type": "string",
+            "pattern": "^-?[0-9]{1,12}(?:\\.[0-9]{1,2})?$"
+          }
+        },
+        "required": [
+          "name",
+          "openingDate",
+          "openingBalance"
+        ],
+        "additionalProperties": false
+      },
+      "AccountValidationError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "invalid_request"
+            ]
+          },
+          "openingDateError": {
+            "type": "string",
+            "description": "Field error when the opening date is invalid."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
       }
     },
     "responses": {
@@ -381,6 +491,38 @@
                   "type": "string",
                   "enum": [
                     "unavailable"
+                  ]
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "InvalidAccount": {
+        "description": "The financial account request is invalid.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AccountValidationError"
+            }
+          }
+        }
+      },
+      "AccountNotFound": {
+        "description": "No account with that ID belongs to the authorised owner.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "not_found"
                   ]
                 }
               },

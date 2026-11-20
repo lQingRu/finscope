@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { createApi } from "../src/app.ts";
 import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
 
@@ -55,6 +55,7 @@ test("direct reads and writes reject missing and unverified tokens and another G
       repository: {
         list: async () => assert.fail("Unauthorized request reached storage"),
         open: async () => assert.fail("Unauthorized request reached storage"),
+        correct: async () => assert.fail("Unauthorized request reached storage"),
       },
     },
   });
@@ -74,6 +75,14 @@ test("direct reads and writes reject missing and unverified tokens and another G
       headers,
       payload: openingAccount,
     });
+    const correction = await app.inject({
+      method: "PATCH",
+      url: "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d",
+      headers,
+      payload: { name: "Emergency savings", openingDate: "2026-11-18", openingBalance: "3250" },
+    });
+    assert.equal(correction.statusCode, status);
+    assert.equal(correction.headers["cache-control"], "no-store");
     assert.equal(read.statusCode, status);
     assert.equal(read.headers["cache-control"], "no-store");
     assert.equal(write.statusCode, status);
@@ -81,7 +90,7 @@ test("direct reads and writes reject missing and unverified tokens and another G
   }
 });
 
-test("an owner can open dated SGD accounts that survive an API restart without creating income or expenses", {
+test("an owner can correct an account in place and see the new opening balance after an API restart", {
   skip: !process.env.FINSCOPE_TEST_DATABASE_URL,
 }, async ({ onTestFinished }) => {
   const { randomUUID } = await import("node:crypto");
@@ -90,24 +99,28 @@ test("an owner can open dated SGD accounts that survive an API restart without c
   const { migrateDatabase } = await import("../src/database.ts");
   const { createFinancialAccountRepository } = await import("../src/financial-accounts/repository.ts");
   const workspaceOwner = randomUUID();
-  const token = `test.${Buffer.from(JSON.stringify({
-    sub: workspaceOwner,
-    aud: "authenticated",
-    role: "authenticated",
-    amr: [{ method: "oauth" }],
-  })).toString("base64url")}.signature`;
-  const headers = { authorization: `Bearer ${token}`, origin: "https://finscope.pages.dev" };
+  function sessionHeaders(userId: string) {
+    const token = `test.${Buffer.from(JSON.stringify({
+      sub: userId,
+      aud: "authenticated",
+      role: "authenticated",
+      amr: [{ method: "oauth" }],
+    })).toString("base64url")}.signature`;
+    return { authorization: `Bearer ${token}`, origin: "https://finscope.pages.dev" };
+  }
 
-  async function startApi() {
+  const headers = sessionHeaders(workspaceOwner);
+
+  async function startApi(userId = workspaceOwner) {
     const pool = new Pool({ connectionString: process.env.FINSCOPE_TEST_DATABASE_URL });
     onTestFinished(() => pool.end());
     await migrateDatabase(pool);
     const authorize = createOwnerAuthorizer({
       supabaseUrl: "https://project.example",
       supabasePublishableKey: "sb_publishable_test",
-      ownerUserId: workspaceOwner,
+      ownerUserId: userId,
       ownerGoogleSubject,
-    }, async () => Response.json(providerUser(workspaceOwner, ownerGoogleSubject)));
+    }, async () => Response.json(providerUser(userId, ownerGoogleSubject)));
 
     const app = await createApi({
       checkDatabase: async () => {},
@@ -141,16 +154,112 @@ test("an owner can open dated SGD accounts that survive an API restart without c
     assert.equal(response.statusCode, 201);
     ids.push(response.json().id);
   }
+  const correction = await first.inject({
+    method: "PATCH",
+    url: `/financial-accounts/${ids[0]}`,
+    headers,
+    payload: { name: "  Emergency savings  ", openingDate: "2026-11-18", openingBalance: "3250" },
+  });
+  assert.equal(correction.statusCode, 200);
+  const corrected = {
+    ...openingAccount,
+    id: ids[0],
+    name: "Emergency savings",
+    openingDate: "2026-11-18",
+    openingBalance: "3250.00",
+  };
+  assert.deepEqual(correction.json(), corrected);
+  const rejectedCorrection = await first.inject({
+    method: "PATCH",
+    url: `/financial-accounts/${ids[0]}`,
+    headers,
+    payload: { name: "Future savings", openingDate: "9999-12-31", openingBalance: "4000.00" },
+  });
+  assert.equal(rejectedCorrection.statusCode, 400);
   await first.close();
+
+  const otherUserId = randomUUID();
+  const otherWorkspace = await startApi(otherUserId);
+  const otherCorrection = await otherWorkspace.inject({
+    method: "PATCH",
+    url: `/financial-accounts/${ids[0]}`,
+    headers: sessionHeaders(otherUserId),
+    payload: { name: "Other workspace", openingDate: "2026-11-18", openingBalance: "0" },
+  });
+  assert.equal(otherCorrection.statusCode, 404);
+  assert.deepEqual(otherCorrection.json(), { status: "not_found" });
 
   const second = await startApi();
   const response = await second.inject({ method: "GET", url: "/financial-accounts", headers });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), {
     accounts: [
-      { ...openingAccount, id: ids[0] },
+      corrected,
       { ...brokerage, id: ids[1], openingBalance: "0.00" },
     ],
-    summary: { currency: "SGD", balance: "3000.00", income: "0.00", expenses: "0.00" },
+    summary: { currency: "SGD", balance: "3250.00", income: "0.00", expenses: "0.00" },
   });
+});
+
+test("opening and correcting accounts use the Singapore calendar date", async ({ onTestFinished }) => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-19T16:10:00.000Z"));
+  onTestFinished(() => { vi.useRealTimers(); });
+
+  const accountId = "b13ea6d0-f915-4d8d-9998-48084e0cd60d";
+  const app = await createApi({
+    checkDatabase: async () => {},
+    corsOrigin: "https://finscope.pages.dev",
+    reportError: assert.fail,
+    accounts: {
+      authorize: async () => ({ status: "authorized", ownerUserId }),
+      repository: {
+        list: async () => [],
+        open: async (_owner, input) => ({ ...input, id: accountId }),
+        correct: async (_owner, id, input) => ({ ...openingAccount, ...input, id, type: "bank", currency: "SGD" }),
+      },
+    },
+  });
+  onTestFinished(() => app.close());
+
+  const corrected = { name: "Savings", openingBalance: "3000.00" };
+  for (const [method, url, fields, successStatus] of [
+    ["POST", "/financial-accounts", openingAccount, 201],
+    ["PATCH", `/financial-accounts/${accountId}`, corrected, 200],
+  ] as const) {
+    for (const openingDate of ["2026-11-19", "2026-11-20"]) {
+      const response = await app.inject({ method, url, payload: { ...fields, openingDate } });
+      assert.equal(response.statusCode, successStatus);
+      assert.equal(response.json().openingDate, openingDate);
+    }
+    for (const openingDate of ["2026-11-21", "2026-11-31"]) {
+      const response = await app.inject({ method, url, payload: { ...fields, openingDate } });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().status, "invalid_request");
+      assert.match(response.json().openingDateError, /opening date/i);
+    }
+  }
+});
+
+test("the web origin can send an authenticated account correction", async ({ onTestFinished }) => {
+  const origin = "https://finscope.pages.dev";
+  const app = await createApi({
+    checkDatabase: async () => {},
+    corsOrigin: origin,
+    reportError: assert.fail,
+  });
+  onTestFinished(() => app.close());
+
+  const preflight = await app.inject({
+    method: "OPTIONS",
+    url: "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d",
+    headers: {
+      origin,
+      "access-control-request-method": "PATCH",
+      "access-control-request-headers": "authorization,content-type",
+    },
+  });
+  assert.equal(preflight.statusCode, 204);
+  assert.equal(preflight.headers["access-control-allow-origin"], origin);
+  assert.match(String(preflight.headers["access-control-allow-methods"]), /\bPATCH\b/);
 });
