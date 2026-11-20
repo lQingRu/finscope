@@ -1,11 +1,11 @@
-import { financialAccountResponses } from "@finscope/contracts/financial-accounts";
-import type { OpenFinancialAccount } from "@finscope/contracts/financial-accounts";
+import { financialAccountErrors, financialAccountResponses } from "@finscope/contracts/financial-accounts";
+import type { CorrectFinancialAccount, OpenFinancialAccount } from "@finscope/contracts/financial-accounts";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const endpoint = new URL("/financial-accounts", apiUrl);
 
 export class AccountApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(readonly status: number, readonly openingDateError?: string) {
     super(`Account API returned ${status}`);
   }
 }
@@ -21,16 +21,37 @@ export async function listAccounts(token: string, signal: AbortSignal) {
   return financialAccountResponses.list[200].parse(await response.json());
 }
 
-export async function openAccount(token: string, input: OpenFinancialAccount) {
-  const response = await fetch(endpoint, {
-    method: "POST",
+async function saveAccount(
+  token: string,
+  url: URL,
+  method: "POST" | "PATCH",
+  input: OpenFinancialAccount | CorrectFinancialAccount,
+) {
+  const response = await fetch(url, {
+    method,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (response.status !== 201) {
-    throw new AccountApiError(response.status);
+  if (response.status === 400) {
+    const body = financialAccountErrors[400].safeParse(await response.json().catch(() => null));
+    throw new AccountApiError(400, body.data?.openingDateError);
   }
-  return financialAccountResponses.open[201].parse(await response.json());
+  if (method === "POST" && response.status === 201) {
+    return financialAccountResponses.open[201].parse(await response.json());
+  }
+  if (method === "PATCH" && response.status === 200) {
+    return financialAccountResponses.correct[200].parse(await response.json());
+  }
+  throw new AccountApiError(response.status);
+}
+
+export function openAccount(token: string, input: OpenFinancialAccount) {
+  return saveAccount(token, endpoint, "POST", input);
+}
+
+export function correctAccount(token: string, accountId: string, input: CorrectFinancialAccount) {
+  const url = new URL(`${endpoint.pathname}/${encodeURIComponent(accountId)}`, endpoint);
+  return saveAccount(token, url, "PATCH", input);
 }
 
 export function isAccessError(error: unknown) {
