@@ -12,6 +12,13 @@ const singaporeDate = new Intl.DateTimeFormat("en", {
   month: "2-digit",
   day: "2-digit",
 });
+export function singaporeCalendarDate(now = new Date()) {
+  const { year, month, day } = Object.fromEntries(
+    singaporeDate.formatToParts(now).map(({ type, value }) => [type, value]),
+  );
+  return `${year}-${month}-${day}`;
+}
+
 const calendarDate = z.iso.date("Enter a valid opening date.").refine(
   (date) => !date.startsWith("0000-"),
   "Enter an opening date in year 1 or later.",
@@ -33,10 +40,7 @@ const accountKind = {
 
 export const correctFinancialAccount = accountDetails.extend({
   openingDate: calendarDate.refine((date) => {
-    const { year, month, day } = Object.fromEntries(
-      singaporeDate.formatToParts(new Date()).map(({ type, value }) => [type, value]),
-    );
-    return date <= `${year}-${month}-${day}`;
+    return date <= singaporeCalendarDate();
   }, "Enter an opening date on or before today in Singapore."),
 });
 export const openFinancialAccount = correctFinancialAccount.extend(accountKind);
@@ -68,6 +72,7 @@ export const financialAccountErrors = {
 
 export const financialAccountResponses = {
   list: { 200: financialAccounts, ...financialAccountErrors },
+  delete: { ...financialAccountErrors, 404: z.object({ status: z.literal("not_found") }) },
   open: { 201: financialAccount, ...financialAccountErrors },
   correct: {
     200: financialAccount,

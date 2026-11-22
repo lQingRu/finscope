@@ -17,6 +17,8 @@ PRs as a request surface: no.
 
 Define each ticket's responsibility and observable acceptance criteria. An implementation issue starts with its implementation scope or status. Record test results there and check off each criterion the evidence verifies. Use automated tests and agent-run checks for everything they can verify. Ask for human verification only where evidence is still missing and a human must provide it, such as a real owner sign-in, a required approval, or access to a restricted environment.
 
+Confirm ambiguous financial behaviour, irreversible actions, and data-retention or audit scope with the owner before implementing those decisions. When a rule limits user input or actions, include acceptance criteria for both UI prevention and API enforcement.
+
 1. Check for human-only work when scoping the issue and again before handing it back or closing it. As soon as you identify it, create or update a linked sub-issue. Apply `ready-for-human` to that sub-issue and assign the person responsible when known. Give them a checklist of the remaining steps, where to perform them, the expected result, and what to report. Keep credentials and tokens in the relevant provider settings.
 2. Keep the human checklist and any **Human action required** heading in the human-owned sub-issue. On the implementation issue, record completed implementation checks and link to the sub-issue. Base the implementation issue's triage label on its own work. Record a GitHub dependency if the sub-issue blocks remaining implementation work or closure. Continue any work you can complete independently.
 3. Verify the sub-issue and its link are visible in GitHub before handoff. Include the sub-issue link and the next human action in your reply.

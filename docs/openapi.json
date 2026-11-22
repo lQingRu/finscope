@@ -198,6 +198,48 @@
             "$ref": "#/components/responses/AuthUnavailable"
           }
         }
+      },
+      "delete": {
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "summary": "Permanently delete an unused financial account",
+        "responses": {
+          "204": {
+            "description": "Financial account deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidAccount"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/AccountNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
       }
     }
   },

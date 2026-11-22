@@ -55,6 +55,7 @@ test("direct reads and writes reject missing and unverified tokens and another G
     accounts: {
       authorize,
       repository: {
+        delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => assert.fail("Unauthorized request reached storage"),
         open: async () => assert.fail("Unauthorized request reached storage"),
         correct: async () => assert.fail("Unauthorized request reached storage"),
@@ -77,6 +78,12 @@ test("direct reads and writes reject missing and unverified tokens and another G
       headers,
       payload: openingAccount,
     });
+    const removal = await app.inject({
+      method: "DELETE",
+      url: "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d",
+      headers,
+    });
+    assert.equal(removal.statusCode, status);
     const correction = await app.inject({
       method: "PATCH",
       url: "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d",
@@ -194,6 +201,12 @@ test("an owner can correct an account in place and see the new opening balance a
   });
   assert.equal(otherCorrection.statusCode, 404);
   assert.deepEqual(otherCorrection.json(), { status: "not_found" });
+  const removalUrl = `/financial-accounts/${ids[0]}`;
+  const foreignRemoval = await otherWorkspace.inject({
+    method: "DELETE", url: removalUrl, headers: sessionHeaders(otherUserId),
+  });
+  assert.equal(foreignRemoval.statusCode, 404);
+
 
   const { app: second } = await startApi();
   const response = await second.inject({ method: "GET", url: "/financial-accounts", headers });
@@ -205,6 +218,15 @@ test("an owner can correct an account in place and see the new opening balance a
     ],
     summary: { currency: "SGD", balance: "3250.00", income: "0.00", expenses: "0.00" },
   });
+  const remove = () => second.inject({ method: "DELETE", url: removalUrl, headers });
+  assert.equal((await remove()).statusCode, 204);
+  assert.equal((await remove()).statusCode, 404);
+  const afterRemoval = await second.inject({ method: "GET", url: "/financial-accounts", headers });
+  assert.deepEqual(afterRemoval.json(), {
+    accounts: [{ ...brokerage, id: ids[1], openingBalance: "0.00" }],
+    summary: { currency: "SGD", balance: "0.00", income: "0.00", expenses: "0.00" },
+  });
+
 });
 
 test("opening and correcting accounts use the Singapore calendar date", async ({ onTestFinished }) => {
@@ -220,6 +242,7 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     accounts: {
       authorize: async () => ({ status: "authorized", ownerUserId }),
       repository: {
+        delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => [],
         open: async (_owner, input) => ({ ...input, id: accountId }),
         correct: async (_owner, id, input) => ({ ...openingAccount, ...input, id, type: "bank", currency: "SGD" }),

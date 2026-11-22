@@ -54,6 +54,15 @@ export function correctAccount(token: string, accountId: string, input: CorrectF
   return saveAccount(token, url, "PATCH", input);
 }
 
+export async function deleteAccount(token: string, accountId: string) {
+  const url = new URL(`${endpoint.pathname}/${encodeURIComponent(accountId)}`, endpoint);
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status !== 204) throw new AccountApiError(response.status);
+}
+
 export function isAccessError(error: unknown) {
   return error instanceof AccountApiError && [401, 403].includes(error.status);
 }
