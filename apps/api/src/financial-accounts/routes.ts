@@ -70,10 +70,15 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
     if (!query.success) {
       return reply.code(400).send(financialAccountResponses.list[400].parse({ status: "invalid_request" }));
     }
-    const { from, to } = query.data;
+    const { view, from, to } = query.data;
     const period = from && to ? { from, to } : currentSingaporeMonth();
     const overview = await repository.list(request.getDecorator<string>("workspaceOwnerId"), period);
-    return reply.send(financialAccountResponses.list[200].parse(overview));
+    if (view || from) {
+      return reply.send(financialAccountResponses.overview[200].parse(overview));
+    }
+    const accounts = overview.accounts.map(({ balance, earliestActivityDate, ...account }) => account);
+    const { from: firstDate, to: lastDate, netCashflow, ...summary } = overview.summary;
+    return reply.send(financialAccountResponses.list[200].parse({ accounts, summary }));
   });
 
   registerTransactionRoutes(api, repository);

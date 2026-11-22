@@ -54,8 +54,9 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
         const [existing] = await write.select({ id: transactions.id }).from(transactions).where(transactionScope);
         if (!existing) return { status: "not_found" };
       }
+      // An older API can still update this account without taking the workspace advisory lock.
       const [account] = await write.select({ openingDate: accounts.openingDate }).from(accounts)
-        .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, input.accountId)));
+        .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, input.accountId))).for("share");
       if (!account) return { status: "missing_account" };
       if (input.date < account.openingDate) return { status: "before_opening", openingDate: account.openingDate };
 

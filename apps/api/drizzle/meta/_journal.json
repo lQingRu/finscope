@@ -15,6 +15,13 @@
       "when": 1795334400000,
       "tag": "0001_transactions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795334400001,
+      "tag": "0002_guard_account_opening_date",
+      "breakpoints": true
     }
   ]
 }

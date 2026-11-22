@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./api-errors": "./api-errors.ts",
+    "./calendar-date": "./calendar-date.ts",
     "./health": "./health.ts",
     "./financial-accounts": "./financial-accounts.ts",
     "./transactions": "./transactions.ts"

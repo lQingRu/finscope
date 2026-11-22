@@ -58,7 +58,7 @@
     },
     "/financial-accounts": {
       "get": {
-        "summary": "List financial accounts, their balances, and the reporting period summary",
+        "summary": "List financial accounts and their SGD totals",
         "security": [
           {
             "supabaseAccessToken": []
@@ -66,11 +66,18 @@
         ],
         "responses": {
           "200": {
-            "description": "Account balances and reporting period totals in SGD.",
+            "description": "The original account list for requests without parameters, or the reporting overview when requested.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountsResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/FinancialAccountsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FinancialAccountOverviewResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -91,8 +98,19 @@
             "$ref": "#/components/responses/AuthUnavailable"
           }
         },
-        "description": "Balances include opening balances and all recorded transactions. Income, expenses, and net cashflow use the inclusive reporting period. Supply both dates or omit both to use the current calendar month in Asia/Singapore.",
+        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances and all recorded transactions. Income, expenses, and net cashflow use the inclusive reporting period. Without dates, totals use the current calendar month in Asia/Singapore.",
         "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "description": "Include account balances, earliest activity dates, net cashflow, and reporting period dates.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "overview"
+              ]
+            }
+          },
           {
             "name": "from",
             "in": "query",
@@ -585,6 +603,52 @@
         "additionalProperties": false
       },
       "FinancialAccountsResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FinancialAccount"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "currency": {
+                "type": "string",
+                "enum": [
+                  "SGD"
+                ]
+              },
+              "balance": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "income": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "expenses": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              }
+            },
+            "required": [
+              "currency",
+              "balance",
+              "income",
+              "expenses"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "accounts",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "FinancialAccountOverviewResponse": {
         "type": "object",
         "properties": {
           "accounts": {

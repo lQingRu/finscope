@@ -12,7 +12,7 @@ export class AccountApiError extends Error {
 
 export async function listAccounts(token: string, period: ReportingPeriod | undefined, signal: AbortSignal) {
   const url = new URL(endpoint);
-  if (period) url.search = new URLSearchParams(period).toString();
+  url.search = new URLSearchParams({ view: "overview", ...period }).toString();
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal,
@@ -20,7 +20,7 @@ export async function listAccounts(token: string, period: ReportingPeriod | unde
   if (response.status !== 200) {
     throw new AccountApiError(response.status);
   }
-  return financialAccountResponses.list[200].parse(await response.json());
+  return financialAccountResponses.overview[200].parse(await response.json());
 }
 
 async function saveAccount(

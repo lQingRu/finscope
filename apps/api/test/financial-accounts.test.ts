@@ -221,7 +221,7 @@ test("an owner can correct an account in place and see the new opening balance a
 
 
   const { app: second } = await startApi();
-  const response = await second.inject({ method: "GET", url: "/financial-accounts", headers });
+  const response = await second.inject({ method: "GET", url: "/financial-accounts?view=overview", headers });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), {
     accounts: [
@@ -233,7 +233,7 @@ test("an owner can correct an account in place and see the new opening balance a
   const remove = () => second.inject({ method: "DELETE", url: removalUrl, headers });
   assert.equal((await remove()).statusCode, 204);
   assert.equal((await remove()).statusCode, 404);
-  const afterRemoval = await second.inject({ method: "GET", url: "/financial-accounts", headers });
+  const afterRemoval = await second.inject({ method: "GET", url: "/financial-accounts?view=overview", headers });
   assert.deepEqual(afterRemoval.json(), {
     accounts: [{ ...brokerage, id: ids[1], openingBalance: "0.00", balance: "0.00", earliestActivityDate: null }],
     summary: { currency: "SGD", balance: "0.00", income: "0.00", expenses: "0.00", netCashflow: "0.00", ...currentSingaporeMonth() },

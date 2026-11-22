@@ -9,19 +9,20 @@ import {
 import type { Transaction, TransactionInput } from "@finscope/contracts/transactions";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { isAccessError } from "./account-api";
 import { Button } from "./components/ui/button";
 import { FormField } from "./form-field";
 import { saveTransaction, TransactionApiError } from "./transaction-api";
+import { useSingaporeToday } from "./use-singapore-today";
 
 const transactionFields = ["accountId", "type", "amount", "date", "category", "description"] as const;
 
-function blankTransaction(accountId: string): TransactionInput {
+function blankTransaction(accountId: string, date: string): TransactionInput {
   return {
     accountId, type: "expense", category: defaultTransactionCategory.expense,
-    amount: "", date: singaporeCalendarDate(), description: "",
+    amount: "", date, description: "",
   };
 }
 
@@ -38,16 +39,20 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
   const client = useQueryClient();
   const id = useId();
   const [notice, setNotice] = useState("");
+  const { today } = useSingaporeToday();
+  const dateChanged = useRef(false);
+  const automaticDate = useRef(today);
+  const dateInput = useRef<HTMLInputElement>(null);
   const initialAccount = accounts.length === 1 ? accounts[0].id : "";
   const {
-    control, register, handleSubmit, reset, setError, setFocus, setValue, watch, formState: { errors },
+    control, register, handleSubmit, reset, resetField, setError, setFocus, setValue, watch, formState: { errors },
   } = useForm<TransactionInput>({
     defaultValues: transaction
       ? {
         accountId: transaction.accountId, type: transaction.type, amount: transaction.amount, date: transaction.date,
         category: transaction.category, description: transaction.description ?? "",
       }
-      : blankTransaction(initialAccount),
+      : blankTransaction(initialAccount, automaticDate.current),
     resolver: zodResolver(transactionInput.superRefine(({ accountId, date }, context) => {
       const account = accounts.find(({ id }) => id === accountId);
       if (!account) {
@@ -57,12 +62,22 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
       }
     })),
   });
+  function markDateChanged() {
+    dateChanged.current = true;
+  }
+  const { ref: registerDate, ...dateField } = register("date", { onChange: markDateChanged });
   const selectedAccount = accounts.find(({ id }) => id === watch("accountId"));
   const type = watch("type");
   const editing = Boolean(transaction);
   useEffect(() => {
     if (editing) setFocus("accountId");
   }, [editing, setFocus]);
+
+  useEffect(() => {
+    if (editing || dateChanged.current || dateInput.current?.value !== automaticDate.current) return;
+    automaticDate.current = today;
+    resetField("date", { defaultValue: today });
+  }, [editing, resetField, today]);
 
   const save = useMutation({
     mutationFn: (input: TransactionInput) => saveTransaction(token, input, transaction?.id),
@@ -71,7 +86,9 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
       if (onCorrected) {
         onCorrected(saved);
       } else {
-        reset(blankTransaction(saved.accountId));
+        dateChanged.current = false;
+        automaticDate.current = singaporeCalendarDate();
+        reset(blankTransaction(saved.accountId, automaticDate.current));
         setNotice("Transaction recorded.");
       }
       await client.invalidateQueries({ queryKey });
@@ -132,7 +149,14 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
             {(attributes) => <input {...attributes} required inputMode="decimal" autoComplete="off" placeholder="0.00" {...register("amount")} />}
           </FormField>
           <FormField label="Transaction date" error={errors.date?.message}>
-            {(attributes) => <input {...attributes} required type="date" min={selectedAccount?.openingDate ?? "0001-01-01"} max="9999-12-31" {...register("date")} />}
+            {(attributes) => (
+              <input {...attributes} {...dateField} required type="date"
+                min={selectedAccount?.openingDate ?? "0001-01-01"} max="9999-12-31"
+                onInput={markDateChanged} ref={(element) => {
+                  dateInput.current = element;
+                  registerDate(element);
+                }} />
+            )}
           </FormField>
           <FormField label="Category" error={errors.category?.message}>
             {(attributes) => (

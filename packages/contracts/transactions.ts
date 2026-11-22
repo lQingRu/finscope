@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiErrorResponses } from "@finscope/contracts/api-errors";
+import { calendarDateSchema } from "@finscope/contracts/calendar-date";
 
 export const transactionTypes = ["income", "expense"] as const;
 export const incomeCategories = ["Salary", "Other Income"] as const;
@@ -7,8 +8,10 @@ export const expenseCategories = ["Food", "Transport", "Shopping", "Bills", "Oth
 export const transactionCategories = { income: incomeCategories, expense: expenseCategories };
 export const defaultTransactionCategory = { income: "Other Income", expense: "Other Expense" } as const;
 
-export const transactionDate = z.iso.date("Enter a valid transaction date.")
-  .refine((value) => !value.startsWith("0000-"), "Enter a transaction date in year 1 or later.");
+export const transactionDate = calendarDateSchema(
+  "Enter a valid transaction date.",
+  "Enter a transaction date in year 1 or later.",
+);
 const transactionType = z.enum(transactionTypes, { error: "Select income or expense." });
 const transactionCategory = z.enum([...incomeCategories, ...expenseCategories], {
   error: "Select a category for this transaction type.",
@@ -30,7 +33,7 @@ export const transactionHistoryQuery = z.strictObject({
   category: transactionCategory.optional(),
   from: transactionDate.optional(),
   to: transactionDate.optional(),
-}).refine(({ from, to }) => !from || !to || from <= to, "The start date must be on or before the end date.");
+}).refine(({ from, to }) => !from || !to || from <= to, { path: ["to"], error: "The start date must be on or before the end date." });
 
 export const transactionInput = transactionFields.refine(
   ({ type, category }) => transactionCategories[type].some((allowed) => allowed === category),

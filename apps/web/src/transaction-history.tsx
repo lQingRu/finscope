@@ -1,9 +1,11 @@
 import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
 import { transactionCategories, transactionHistoryQuery } from "@finscope/contracts/transactions";
 import type { Transaction, TransactionHistoryQuery } from "@finscope/contracts/transactions";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import { isAccessError } from "./account-api";
 import { Button } from "./components/ui/button";
 import { formatDate, formatSgd } from "./financial-format";
@@ -12,6 +14,11 @@ import { listTransactions, TransactionApiError } from "./transaction-api";
 import { TransactionForm } from "./transaction-form";
 
 const emptyFilters = { type: "", category: "", from: "", to: "" };
+const historyFilterForm = z.preprocess(
+  (input: typeof emptyFilters) => Object.fromEntries(Object.entries(input).filter(([, value]) => value !== "")),
+  transactionHistoryQuery,
+);
+type TransactionEditor = { transactionId: string };
 
 export function TransactionHistory({ account, accounts, token, queryKey, onClose }: {
   account: FinancialAccount;
@@ -20,10 +27,14 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   queryKey: readonly string[];
   onClose: () => void;
 }) {
-  const [input, setInput] = useState(emptyFilters);
   const [filters, setFilters] = useState<TransactionHistoryQuery>({});
-  const [filterError, setFilterError] = useState("");
-  const [editingId, setEditingId] = useState<string>();
+  const [editor, setEditor] = useState<TransactionEditor>();
+  const activeEditor = useRef<TransactionEditor | undefined>(undefined);
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
+    defaultValues: emptyFilters,
+    resolver: zodResolver(historyFilterForm),
+  });
+  const [type, from, to] = watch(["type", "from", "to"]);
   const [notice, setNotice] = useState("");
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -35,35 +46,32 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   });
   useEffect(() => { heading.current?.focus(); }, []);
 
-  function applyFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const parsed = transactionHistoryQuery.safeParse(Object.fromEntries(
-      Object.entries(input).filter(([, value]) => value !== ""),
-    ));
-    if (!parsed.success) {
-      setFilterError(parsed.error.issues[0].message);
-      return;
-    }
-    setFilterError("");
-    setEditingId(undefined);
-    setNotice("");
-    setFilters(parsed.data);
+  function changeEditor(next?: TransactionEditor) {
+    activeEditor.current = next;
+    setEditor(next);
   }
 
-  const categories = input.type === "income" || input.type === "expense"
-    ? transactionCategories[input.type]
+  function applyFilters(filters: TransactionHistoryQuery) {
+    changeEditor();
+    setNotice("");
+    setFilters(filters);
+  }
+
+  const categories = type === "income" || type === "expense"
+    ? transactionCategories[type]
     : [...transactionCategories.income, ...transactionCategories.expense];
 
-  function finishEditing(transaction?: Transaction) {
-    setEditingId(undefined);
+  function finishEditing(editor: TransactionEditor, transaction?: Transaction) {
+    if (activeEditor.current !== editor) return;
+    changeEditor();
     if (transaction) {
       const destination = accounts.find(({ id }) => id === transaction.accountId);
       setNotice(destination && destination.id !== account.id
         ? `Transaction moved to ${destination.name}.`
         : "Transaction updated.");
       heading.current?.focus();
-    } else if (editingId) {
-      document.getElementById(`edit-transaction-${editingId}`)?.focus();
+    } else {
+      document.getElementById(`edit-transaction-${editor.transactionId}`)?.focus();
     }
   }
 
@@ -76,52 +84,44 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
         </div>
         <Button variant="outline" onClick={onClose}>Close history</Button>
       </div>
-      <form className="mt-4 grid gap-3" aria-label="Filter transaction history" onSubmit={applyFilters} noValidate>
+      <form className="mt-4 grid gap-3" aria-label="Filter transaction history" onSubmit={handleSubmit(applyFilters)} noValidate>
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Filter by type">
+          <FormField label="Filter by type" error={errors.type?.message}>
             {(attributes) => (
-              <select {...attributes} value={input.type} onChange={(event) => {
-                setInput({ ...input, type: event.currentTarget.value, category: "" });
-              }}>
+              <select {...attributes} {...register("type", {
+                onChange: () => setValue("category", ""),
+              })}>
                 <option value="">All types</option>
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
               </select>
             )}
           </FormField>
-          <FormField label="Filter by category">
+          <FormField label="Filter by category" error={errors.category?.message}>
             {(attributes) => (
-              <select {...attributes} value={input.category} onChange={(event) => {
-                setInput({ ...input, category: event.currentTarget.value });
-              }}>
+              <select {...attributes} {...register("category")}>
                 <option value="">All categories</option>
                 {categories.map((category) => <option key={category} value={category}>{category}</option>)}
               </select>
             )}
           </FormField>
-          <FormField label="History start date">
+          <FormField label="History start date" error={errors.from?.message}>
             {(attributes) => (
-              <input {...attributes} type="date" min="0001-01-01" max={input.to || "9999-12-31"} value={input.from}
-                onChange={(event) => setInput({ ...input, from: event.currentTarget.value })} />
+              <input {...attributes} type="date" min="0001-01-01" max={to || "9999-12-31"} {...register("from")} />
             )}
           </FormField>
-          <FormField label="History end date">
+          <FormField label="History end date" error={errors.to?.message}>
             {(attributes) => (
-              <input {...attributes} type="date" min={input.from || "0001-01-01"} max="9999-12-31" value={input.to}
-                onChange={(event) => setInput({ ...input, to: event.currentTarget.value })} />
+              <input {...attributes} type="date" min={from || "0001-01-01"} max="9999-12-31" {...register("to")} />
             )}
           </FormField>
         </div>
-        {filterError && <p role="alert" className="text-sm text-[#8f3023]">{filterError}</p>}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" type="submit">Apply filters</Button>
           {Object.keys(filters).length > 0 && (
             <Button variant="outline" onClick={() => {
-              setInput(emptyFilters);
-              setFilters({});
-              setFilterError("");
-              setNotice("");
-              setEditingId(undefined);
+              reset(emptyFilters);
+              applyFilters({});
             }}>Clear filters</Button>
           )}
         </div>
@@ -149,12 +149,12 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
       {history.data && history.data.length > 0 && (
         <ul className="mt-4 divide-y divide-[#e0e8e2] border-t border-[#e0e8e2]">
           {history.data.map((transaction) => {
-            const editing = editingId === transaction.id;
+            const editing = editor?.transactionId === transaction.id;
             const income = transaction.type === "income";
             return (
               <li key={transaction.id} className="py-4 last:pb-0">
-                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-                  <div className="min-w-0 flex-1">
+                <div className="grid items-start gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="min-w-0">
                     <p className="font-semibold">{transaction.category}</p>
                     <p className="mt-1 text-sm text-[#495e55]">
                       <time dateTime={transaction.date}>{formatDate(transaction.date)}</time> · {income ? "Income" : "Expense"}
@@ -167,13 +167,18 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
                     </span>
                     <Button variant="outline" id={`edit-transaction-${transaction.id}`}
                       aria-label={`Edit ${transaction.category} transaction on ${formatDate(transaction.date)}`} aria-expanded={editing}
-                      onClick={() => { setNotice(""); setEditingId(transaction.id); }}
+                      onClick={() => {
+                        if (editing) return;
+                        setNotice("");
+                        changeEditor({ transactionId: transaction.id });
+                      }}
                     >Edit</Button>
                   </div>
                 </div>
                 {editing && (
                   <TransactionForm accounts={accounts} token={token} queryKey={queryKey}
-                    transaction={transaction} onCancel={() => finishEditing()} onCorrected={finishEditing} />
+                    transaction={transaction} onCancel={() => finishEditing(editor)}
+                    onCorrected={(saved) => finishEditing(editor, saved)} />
                 )}
               </li>
             );

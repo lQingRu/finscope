@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { test, vi } from "vitest";
@@ -48,7 +49,7 @@ async function startWorkspace(onFinish: (cleanup: () => Promise<void>) => void, 
     assert.equal(response.statusCode, 201, response.body);
     return response.json();
   }
-  return { app, request, openAccount, record, ownerUserId };
+  return { app, request, openAccount, record, ownerUserId, pool };
 }
 
 test("recording income and expenses updates account balances and the Singapore calendar month summary", {
@@ -63,7 +64,14 @@ test("recording income and expenses updates account balances and the Singapore c
   const expense = await workspace.record(accountId, groceries);
   const restarted = await startWorkspace(onTestFinished, workspace.ownerUserId);
 
-  const accounts = await restarted.request("GET", "/financial-accounts");
+  const legacy = await restarted.request("GET", "/financial-accounts");
+  assert.equal(legacy.statusCode, 200, legacy.body);
+  assert.deepEqual(legacy.json(), {
+    accounts: [{ ...openingAccount, id: accountId, openingBalance: "3000.00" }],
+    summary: { currency: "SGD", balance: "3400.00", income: "500.00", expenses: "100.00" },
+  });
+
+  const accounts = await restarted.request("GET", "/financial-accounts?view=overview");
   assert.equal(accounts.statusCode, 200, accounts.body);
   assert.deepEqual(accounts.json().summary, {
     currency: "SGD", balance: "3400.00", income: "500.00", expenses: "100.00", netCashflow: "400.00",
@@ -90,7 +98,7 @@ test("corrections update one saved transaction across account balances and repor
   const expense = await workspace.record(primary, groceries);
   const transactionUrl = `/transactions/${expense.id}`;
   const novemberUrl = "/financial-accounts?from=2026-11-01&to=2026-11-30";
-  const decemberUrl = "/financial-accounts?from=2026-12-01&to=2026-12-31";
+  const decemberUrl = "/financial-accounts?view=overview&from=2026-12-01&to=2026-12-31";
   const historyUrl = (accountId: string) => `/financial-accounts/${accountId}/transactions`;
 
   const withinPeriod = await workspace.request("PATCH", transactionUrl, {
@@ -150,7 +158,7 @@ test("linked entries protect account deletion and opening dates during concurren
   const rejectedDeletion = await workspace.request("DELETE", accountUrl);
   assert.equal(rejectedDeletion.statusCode, 409, rejectedDeletion.body);
   assert.equal(rejectedDeletion.json().status, "linked_activity");
-  const account = (await workspace.request("GET", "/financial-accounts")).json().accounts[0];
+  const account = (await workspace.request("GET", "/financial-accounts?view=overview")).json().accounts[0];
   assert.deepEqual({ name: account.name, date: account.openingDate, balance: account.balance }, {
     name: "Savings", date: salary.date, balance: "3400.00",
   });
@@ -185,6 +193,76 @@ test("linked entries protect account deletion and opening dates during concurren
     assert.deepEqual(remaining.json().transactions, [inserted.json()]);
   } else {
     assert.equal(remaining.statusCode, 404);
+  }
+});
+
+test("an account correction from the previous API cannot invalidate recorded activity", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const accountId = await workspace.openAccount();
+  const recorded = await workspace.record(accountId, salary);
+
+  // The previous account repository wrote directly without checking for transactions.
+  const previousCorrection = (date: string) => workspace.pool.query(
+    `UPDATE finscope_private.financial_accounts SET name = $1, opening_date = $2, opening_balance = $3
+     WHERE owner_user_id = $4 AND id = $5`,
+    ["Previous API", date, "3000", workspace.ownerUserId, accountId],
+  );
+  assert.equal((await previousCorrection(salary.date)).rowCount, 1);
+  await assert.rejects(previousCorrection("2026-11-04"), { code: "23514" });
+
+  const overview = await workspace.request("GET", "/financial-accounts?view=overview");
+  assert.equal(overview.statusCode, 200, overview.body);
+  const [account] = overview.json().accounts;
+  assert.equal(account.openingDate, salary.date);
+  assert.equal(account.balance, "3500.00");
+  const history = await workspace.request("GET", `/financial-accounts/${accountId}/transactions`);
+  assert.deepEqual(history.json().transactions, [recorded]);
+});
+
+test("recording waits for an opening-date correction from the previous API", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const accountId = await workspace.openAccount();
+  const previousApi = await workspace.pool.connect();
+  const openingDate = "2026-11-04";
+
+  try {
+    await previousApi.query("BEGIN");
+    const { rows: [{ pid }] } = await previousApi.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+    await previousApi.query(
+      "UPDATE finscope_private.financial_accounts SET opening_date = $1 WHERE owner_user_id = $2 AND id = $3",
+      [openingDate, workspace.ownerUserId, accountId],
+    );
+
+    let finished = false;
+    const recording = workspace.request("POST", "/transactions", { ...salary, accountId })
+      .then((response) => {
+        finished = true;
+        return response;
+      });
+
+    // Release the prior writer once the request has encountered it, with a deadline for unexpected failures.
+    const deadline = Date.now() + 2000;
+    while (!finished && Date.now() < deadline) {
+      const blocked = await workspace.pool.query(
+        "SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+        [pid],
+      );
+      if (blocked.rowCount) break;
+      await delay(10);
+    }
+    await previousApi.query("COMMIT");
+
+    const response = await recording;
+    assert.equal(response.statusCode, 400, response.body);
+    assert.match(response.json().fieldErrors.date, /2026-11-04/);
+    const history = await workspace.request("GET", `/financial-accounts/${accountId}/transactions`);
+    assert.deepEqual(history.json().transactions, []);
+  } finally {
+    previousApi.release(true);
   }
 });
 

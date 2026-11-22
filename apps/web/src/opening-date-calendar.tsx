@@ -1,9 +1,10 @@
 import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
 import type { CSSProperties } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { Button } from "./components/ui/button";
+import { useSingaporeToday } from "./use-singapore-today";
 
 function calendarDay(value: string) {
   return new Date(`${value}T12:00:00Z`);
@@ -14,30 +15,9 @@ export function OpeningDateCalendar({ value, onSelect, earliestActivityDate }: {
   onSelect: (date: string) => void;
   earliestActivityDate?: string | null;
 }) {
-  const [today, setToday] = useState(singaporeCalendarDate);
+  const { today, refreshToday } = useSingaporeToday();
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    function refresh() {
-      setToday(singaporeCalendarDate());
-    }
-
-    let timer: ReturnType<typeof setTimeout>;
-    function schedule() {
-      refresh();
-      const now = Date.now();
-      const midnight = Date.parse(`${singaporeCalendarDate(new Date(now))}T00:00:00+08:00`);
-      timer = setTimeout(schedule, midnight + 86_400_000 - now);
-    }
-
-    schedule();
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, []);
 
   const lastDate = earliestActivityDate && earliestActivityDate < today ? earliestActivityDate : today;
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value) ? calendarDay(value) : undefined;
@@ -49,7 +29,7 @@ export function OpeningDateCalendar({ value, onSelect, earliestActivityDate }: {
   return (
     <>
       <Button type="button" variant="outline" onClick={() => {
-        setToday(singaporeCalendarDate());
+        refreshToday();
         dialog.current?.showModal();
       }}>Choose date</Button>
       <dialog ref={dialog} aria-labelledby={titleId}

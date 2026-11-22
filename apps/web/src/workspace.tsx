@@ -4,7 +4,6 @@ import type { AccountWithBalance, CorrectFinancialAccount, FinancialAccount, Rep
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Session } from "@supabase/supabase-js";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { FormEvent } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AccountApiError, correctAccount, deleteAccount, isAccessError, listAccounts, openAccount } from "./account-api";
@@ -403,48 +402,35 @@ function ReportingPeriodForm({ period, onChange }: {
   period?: ReportingPeriod;
   onChange: (period?: ReportingPeriod) => void;
 }) {
-  const [draft, setDraft] = useState<ReportingPeriod>();
-  const input = draft ?? period ?? currentSingaporeMonth();
-  const [error, setError] = useState("");
-
-  function applyPeriod(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const result = customReportingPeriod.safeParse(input);
-    if (!result.success) {
-      setError(result.error.issues[0].message);
-      return;
-    }
-    setError("");
-    onChange(result.data);
-  }
+  const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<ReportingPeriod>({
+    defaultValues: period ?? currentSingaporeMonth(),
+    resolver: zodResolver(customReportingPeriod),
+  });
+  const [from, to] = watch(["from", "to"]);
 
   return (
-    <form aria-label="Select reporting period" onSubmit={applyPeriod} noValidate>
+    <form aria-label="Select reporting period" onSubmit={handleSubmit((input) => onChange(input))} noValidate>
       <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,13rem)_auto] sm:justify-start">
-        <FormField label="Reporting start date">
+        <FormField label="Reporting start date" error={errors.from?.message}>
           {(attributes) => (
-            <input {...attributes} required type="date" min="0001-01-01" max={input.to || "9999-12-31"} value={input.from}
-              onChange={(event) => setDraft({ ...input, from: event.currentTarget.value })} />
+            <input {...attributes} required type="date" min="0001-01-01" max={to || "9999-12-31"} {...register("from")} />
           )}
         </FormField>
-        <FormField label="Reporting end date">
+        <FormField label="Reporting end date" error={errors.to?.message}>
           {(attributes) => (
-            <input {...attributes} required type="date" min={input.from || "0001-01-01"} max="9999-12-31" value={input.to}
-              onChange={(event) => setDraft({ ...input, to: event.currentTarget.value })} />
+            <input {...attributes} required type="date" min={from || "0001-01-01"} max="9999-12-31" {...register("to")} />
           )}
         </FormField>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" variant="outline">Apply period</Button>
           {period && (
             <Button variant="outline" onClick={() => {
-              setDraft(undefined);
-              setError("");
+              reset(currentSingaporeMonth());
               onChange(undefined);
             }}>This month</Button>
           )}
         </div>
       </div>
-      {error && <p role="alert" className="mt-2 text-sm text-[#8f3023]">{error}</p>}
     </form>
   );
 }
