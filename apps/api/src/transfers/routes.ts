@@ -11,6 +11,7 @@ export type TransferWriteResult =
 
 export type TransferRepository = {
   recordTransfer: (ownerUserId: string, input: TransferInput) => Promise<TransferWriteResult>;
+  deleteTransfer: (ownerUserId: string, transferId: string) => Promise<"deleted" | "not_found">;
   correctTransfer: (ownerUserId: string, transferId: string, input: TransferInput) => Promise<TransferWriteResult>;
 };
 
@@ -54,5 +55,17 @@ export function registerTransferRoutes(api: FastifyInstance, repository: Transfe
       return reply.code(400).send(transferResponses.correct[400].parse({ status: "invalid_request" }));
     }
     return saveTransfer(request, reply, params.data.transferId);
+  });
+  api.delete("/transfers/:transferId", async (request, reply) => {
+    const params = transferParams.safeParse(request.params);
+    if (!params.success) {
+      return reply.code(400).send(transferResponses.delete[400].parse({ status: "invalid_request" }));
+    }
+
+    const result = await repository.deleteTransfer(request.getDecorator<string>("workspaceOwnerId"), params.data.transferId);
+    if (result === "not_found") {
+      return reply.code(404).send(transferResponses.delete[404].parse({ status: "not_found" }));
+    }
+    return reply.code(204).send();
   });
 }

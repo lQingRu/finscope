@@ -2,6 +2,7 @@ import { minimumTransferDate } from "@finscope/contracts/transfers";
 import type { TransferInput } from "@finscope/contracts/transfers";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { retainDeletedActivity } from "../audit/activity-deletions.ts";
 import { lockOwnerActivity } from "../financial-accounts/activity-lock.ts";
 import { accounts } from "../financial-accounts/table.ts";
 import type { TransferRepository, TransferWriteResult } from "./routes.ts";
@@ -39,6 +40,17 @@ export function createTransferRepository(db: NodePgDatabase): TransferRepository
   }
 
   return {
+    async deleteTransfer(ownerUserId, transferId) {
+      return db.transaction(async (write) => {
+        await lockOwnerActivity(write, ownerUserId);
+        const [removed] = await write.delete(transfers)
+          .where(and(eq(transfers.ownerUserId, ownerUserId), eq(transfers.id, transferId))).returning();
+        if (!removed) return "not_found";
+
+        await retainDeletedActivity(write, "transfer", removed);
+        return "deleted";
+      }, { isolationLevel: "read committed" });
+    },
     recordTransfer: (ownerUserId, input) => saveTransfer(ownerUserId, input),
     correctTransfer: (ownerUserId, transferId, input) => saveTransfer(ownerUserId, input, transferId),
   };

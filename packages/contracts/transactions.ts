@@ -71,6 +71,7 @@ const transactionHistory = z.strictObject({
 });
 
 export const transactionResponses = {
+  delete: transactionErrors,
   correct: { ...transactionErrors, 200: savedTransaction },
   record: { ...transactionErrors, 201: savedTransaction },
   list: { ...transactionErrors, 200: transactionHistory },

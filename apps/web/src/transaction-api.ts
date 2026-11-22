@@ -34,3 +34,9 @@ export async function saveTransaction(token: string, input: TransactionInput, tr
   if (!transactionId && response.status === 201) return transactionResponses.record[201].parse(await response.json());
   throw new TransactionApiError(response.status);
 }
+
+export async function deleteActivity(token: string, kind: "transaction" | "transfer", id: string) {
+  const url = new URL(`/${kind}s/${encodeURIComponent(id)}`, apiUrl);
+  const response = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (response.status !== 204) throw new AccountApiError(response.status);
+}

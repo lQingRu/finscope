@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import type { FinancialAccountOverview } from "@finscope/contracts/financial-accounts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { test, vi } from "vitest";
@@ -18,7 +19,11 @@ const openingAccount = {
 const salary = { type: "income", amount: "500", date: "2026-11-03", category: "Salary", description: "November pay" };
 const groceries = { type: "expense", amount: "100", date: "2026-11-06", category: "Food" };
 
-async function startWorkspace(onFinish: (cleanup: () => Promise<void>) => void, ownerUserId = randomUUID()) {
+async function startWorkspace(
+  onFinish: (cleanup: () => Promise<void>) => void,
+  ownerUserId = randomUUID(),
+  reportError: (error: Error) => void = assert.fail,
+) {
   const pool = new Pool({ connectionString: databaseUrl });
   onFinish(() => pool.end());
   await migrateDatabase(pool);
@@ -32,7 +37,7 @@ async function startWorkspace(onFinish: (cleanup: () => Promise<void>) => void, 
   const app = await createApi({
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
-    reportError: assert.fail,
+    reportError,
     accounts: {
       authorize,
       repository: createFinancialAccountRepository(db),
@@ -603,3 +608,110 @@ test("concurrent transfer writes preserve opening-date and account deletion inva
   assert.deepEqual(remaining.json().transfers, recorded.statusCode === 201
     ? [{ ...recorded.json(), direction: "outgoing" }] : []);
 });
+
+test("deleting a transfer reverses both balances and deleting everyday activity recalculates cashflow", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const other = await startWorkspace(onTestFinished);
+  const bank = await workspace.openAccount();
+  const broker = await workspace.openAccount({ name: "Brokerage", type: "brokerage", openingBalance: "0" });
+  const income = await workspace.record(bank, salary);
+  const expense = await workspace.record(bank, groceries);
+  const creation = await workspace.request("POST", "/transfers", {
+    sourceAccountId: bank, destinationAccountId: broker, amount: "2000", date: "2026-11-07",
+  });
+  assert.equal(creation.statusCode, 201, creation.body);
+  const transfer = creation.json();
+  const transferPath = `/transfers/${transfer.id}`;
+  const expensePath = `/transactions/${expense.id}`;
+
+  async function expectAmounts(bankBalance: string, brokerBalance: string, total: string, earned: string, spent: string, net: string) {
+    const reply = await workspace.request("GET", "/financial-accounts?from=2026-11-01&to=2026-11-30");
+    assert.equal(reply.statusCode, 200, reply.body);
+    const { accounts, summary } = reply.json<FinancialAccountOverview>();
+    assert.deepEqual(Object.fromEntries(accounts.map(({ id, balance }) => [id, balance])), {
+      [bank]: bankBalance, [broker]: brokerBalance,
+    });
+    assert.deepEqual(summary, {
+      currency: "SGD", from: "2026-11-01", to: "2026-11-30",
+      balance: total, income: earned, expenses: spent, netCashflow: net,
+    });
+  }
+
+  await expectAmounts("1400.00", "2000.00", "3400.00", "500.00", "100.00", "400.00");
+  for (const path of [transferPath, expensePath]) {
+    assert.equal((await other.request("DELETE", path)).statusCode, 404);
+  }
+  await expectAmounts("1400.00", "2000.00", "3400.00", "500.00", "100.00", "400.00");
+
+  const simultaneous = await Promise.all([
+    workspace.request("DELETE", transferPath), workspace.request("DELETE", transferPath),
+  ]);
+  assert.deepEqual(simultaneous.map(({ statusCode }) => statusCode).sort(), [204, 404]);
+  await expectAmounts("3400.00", "0.00", "3400.00", "500.00", "100.00", "400.00");
+  assert.equal((await workspace.request("DELETE", expensePath)).statusCode, 204);
+  await expectAmounts("3500.00", "0.00", "3500.00", "500.00", "0.00", "500.00");
+  assert.equal((await workspace.request("DELETE", `/transactions/${income.id}`)).statusCode, 204);
+  await expectAmounts("3000.00", "0.00", "3000.00", "0.00", "0.00", "0.00");
+
+  assert.equal((await workspace.request("DELETE", "/transactions/invalid")).statusCode, 400);
+  assert.equal((await workspace.request("DELETE", "/transfers/invalid")).statusCode, 400);
+  const restarted = await startWorkspace(onTestFinished, workspace.ownerUserId);
+  for (const account of [bank, broker]) {
+    const history = await restarted.request("GET", `/financial-accounts/${account}/transactions?includeTransfers=true`);
+    assert.equal(history.statusCode, 200, history.body);
+    assert.deepEqual(history.json(), { transactions: [], transfers: [] });
+  }
+
+  const { rows } = await workspace.pool.query(
+    `SELECT activity_kind, activity_id, record, deleted_at FROM finscope_private.activity_deletions
+     WHERE owner_user_id = $1`,
+    [workspace.ownerUserId],
+  );
+  assert.equal(rows.length, 3);
+  for (const [kind, expected] of [["transaction", income], ["transaction", expense], ["transfer", transfer]] as const) {
+    const audit = rows.find(({ activity_id }) => activity_id === expected.id);
+    assert.ok(audit);
+    assert.equal(audit.activity_kind, kind);
+    assert.ok(audit.deleted_at instanceof Date);
+    const { ownerUserId, createdAt, ...fields } = audit.record;
+    assert.equal(ownerUserId, workspace.ownerUserId);
+    assert.ok(Number.isFinite(Date.parse(createdAt)));
+    assert.deepEqual(fields, expected);
+  }
+});
+
+test("an audit write failure preserves the transfer, both histories and both balances", { skip: !databaseUrl },
+  async ({ onTestFinished }) => {
+    const reported: Error[] = [];
+    const workspace = await startWorkspace(onTestFinished, randomUUID(), (error) => { reported.push(error); });
+    const bank = await workspace.openAccount();
+    const broker = await workspace.openAccount({ name: "Brokerage", type: "brokerage", openingBalance: "0" });
+    const creation = await workspace.request("POST", "/transfers", {
+      sourceAccountId: bank, destinationAccountId: broker, amount: "2000", date: "2026-11-07",
+    });
+    assert.equal(creation.statusCode, 201, creation.body);
+    const transfer = creation.json();
+
+    await workspace.pool.query(
+      `INSERT INTO finscope_private.activity_deletions (activity_kind, activity_id, owner_user_id, record)
+       VALUES ('transfer', $1, $2, '{}')`,
+      [transfer.id, workspace.ownerUserId],
+    );
+
+    const failure = await workspace.request("DELETE", `/transfers/${transfer.id}`);
+    assert.equal(failure.statusCode, 500);
+    assert.equal(reported.length, 1);
+    for (const [account, direction] of [[bank, "outgoing"], [broker, "incoming"]]) {
+      const history = await workspace.request("GET", `/financial-accounts/${account}/transactions?includeTransfers=true`);
+      assert.deepEqual(history.json(), { transactions: [], transfers: [{ ...transfer, direction }] });
+    }
+    const overview = await workspace.request("GET", "/financial-accounts?view=overview");
+    const { accounts, summary } = overview.json<FinancialAccountOverview>();
+    assert.deepEqual(Object.fromEntries(accounts.map(({ id, balance }) => [id, balance])), {
+      [bank]: "1000.00", [broker]: "2000.00",
+    });
+    assert.equal(summary.balance, "3000.00");
+    assert.equal(summary.netCashflow, "0.00");
+  });

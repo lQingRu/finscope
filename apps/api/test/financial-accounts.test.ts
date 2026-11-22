@@ -55,12 +55,14 @@ test("direct reads and writes reject missing and unverified tokens and another G
     accounts: {
       authorize,
       transferRepository: {
+        deleteTransfer: async () => assert.fail("Unexpected transfer deletion reached storage"),
         recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
         correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
       },
       repository: {
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
+        deleteTransaction: async () => assert.fail("Unexpected transaction deletion reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
         delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => assert.fail("Unauthorized request reached storage"),
@@ -95,8 +97,10 @@ test("direct reads and writes reject missing and unverified tokens and another G
       ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/transactions?includeTransfers=true"],
       ["POST", "/transfers"],
       ["PATCH", "/transfers/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
+      ["DELETE", "/transfers/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
       ["POST", "/transactions"],
       ["PATCH", "/transactions/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
+      ["DELETE", "/transactions/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
     ] as const) {
       const response = await app.inject({ method, url, headers });
       assert.equal(response.statusCode, status);
@@ -263,12 +267,14 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     accounts: {
       authorize: async () => ({ status: "authorized", ownerUserId }),
       transferRepository: {
+        deleteTransfer: async () => assert.fail("Unexpected transfer deletion reached storage"),
         recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
         correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
       },
       repository: {
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
+        deleteTransaction: async () => assert.fail("Unexpected transaction deletion reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
         delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => assert.fail("Unexpected list reached storage"),
