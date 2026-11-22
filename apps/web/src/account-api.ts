@@ -1,7 +1,7 @@
 import { financialAccountErrors, financialAccountResponses } from "@finscope/contracts/financial-accounts";
-import type { CorrectFinancialAccount, OpenFinancialAccount } from "@finscope/contracts/financial-accounts";
+import type { CorrectFinancialAccount, OpenFinancialAccount, ReportingPeriod } from "@finscope/contracts/financial-accounts";
 
-const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+export const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const endpoint = new URL("/financial-accounts", apiUrl);
 
 export class AccountApiError extends Error {
@@ -10,8 +10,10 @@ export class AccountApiError extends Error {
   }
 }
 
-export async function listAccounts(token: string, signal: AbortSignal) {
-  const response = await fetch(endpoint, {
+export async function listAccounts(token: string, period: ReportingPeriod | undefined, signal: AbortSignal) {
+  const url = new URL(endpoint);
+  if (period) url.search = new URLSearchParams(period).toString();
+  const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal,
   });

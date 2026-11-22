@@ -16,7 +16,7 @@ export function singaporeCalendarDate(now = new Date()) {
   const { year, month, day } = Object.fromEntries(
     singaporeDate.formatToParts(now).map(({ type, value }) => [type, value]),
   );
-  return `${year}-${month}-${day}`;
+  return `${year.padStart(4, "0")}-${month}-${day}`;
 }
 
 const calendarDate = z.iso.date("Enter a valid opening date.").refine(
@@ -52,13 +52,17 @@ const financialAccount = accountDetails.extend({
   openingBalance: sgdAmount,
 });
 
+const accountWithBalance = financialAccount.extend({ balance: sgdAmount, earliestActivityDate: calendarDate.nullable() });
 const financialAccounts = z.strictObject({
-  accounts: z.array(financialAccount),
+  accounts: z.array(accountWithBalance),
   summary: z.strictObject({
     currency: z.literal("SGD"),
     balance: sgdAmount,
     income: sgdAmount,
     expenses: sgdAmount,
+    netCashflow: sgdAmount,
+    from: z.iso.date(),
+    to: z.iso.date(),
   }),
 });
 
@@ -72,7 +76,11 @@ export const financialAccountErrors = {
 
 export const financialAccountResponses = {
   list: { 200: financialAccounts, ...financialAccountErrors },
-  delete: { ...financialAccountErrors, 404: z.object({ status: z.literal("not_found") }) },
+  delete: {
+    ...financialAccountErrors,
+    404: z.object({ status: z.literal("not_found") }),
+    409: z.object({ status: z.literal("linked_activity") }),
+  },
   open: { 201: financialAccount, ...financialAccountErrors },
   correct: {
     200: financialAccount,
@@ -84,3 +92,24 @@ export const financialAccountResponses = {
 export type OpenFinancialAccount = z.infer<typeof openFinancialAccount>;
 export type FinancialAccount = z.infer<typeof financialAccount>;
 export type CorrectFinancialAccount = z.infer<typeof correctFinancialAccount>;
+
+export function currentSingaporeMonth(now = new Date()) {
+  const [year, month] = singaporeCalendarDate(now).split("-");
+  const lastDay = new Date(now);
+  lastDay.setUTCFullYear(Number(year), Number(month), 0);
+  return { from: `${year}-${month}-01`, to: `${year}-${month}-${lastDay.getUTCDate()}` };
+}
+
+export type FinancialAccountOverview = z.infer<typeof financialAccounts>;
+export type AccountWithBalance = z.infer<typeof accountWithBalance>;
+
+const reportingDate = z.iso.date("Enter a valid reporting date.")
+  .refine((date) => !date.startsWith("0000-"), "Enter a reporting date in year 1 or later.");
+export const customReportingPeriod = z.strictObject({ from: reportingDate, to: reportingDate })
+  .refine(({ from, to }) => from <= to, "The start date must be on or before the end date.");
+export const reportingPeriodQuery = z.union([customReportingPeriod, z.strictObject({})]);
+export type ReportingPeriod = z.infer<typeof customReportingPeriod>;
+
+export function accountOpeningAfterActivityMessage(activityDate: string) {
+  return `Enter an opening date on or before the earliest recorded entry (${activityDate}).`;
+}

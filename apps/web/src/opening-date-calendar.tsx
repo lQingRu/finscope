@@ -9,9 +9,10 @@ function calendarDay(value: string) {
   return new Date(`${value}T12:00:00Z`);
 }
 
-export function OpeningDateCalendar({ value, onSelect }: {
+export function OpeningDateCalendar({ value, onSelect, earliestActivityDate }: {
   value: string;
   onSelect: (date: string) => void;
+  earliestActivityDate?: string | null;
 }) {
   const [today, setToday] = useState(singaporeCalendarDate);
   const titleId = useId();
@@ -38,11 +39,12 @@ export function OpeningDateCalendar({ value, onSelect }: {
     };
   }, []);
 
+  const lastDate = earliestActivityDate && earliestActivityDate < today ? earliestActivityDate : today;
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value) ? calendarDay(value) : undefined;
   const selected = parsed && Number.isFinite(parsed.getTime())
-    && parsed.toISOString().slice(0, 10) === value && value >= "0001-01-01" && value <= today
+    && parsed.toISOString().slice(0, 10) === value && value >= "0001-01-01" && value <= lastDate
     ? parsed : undefined;
-  const lastDay = calendarDay(today);
+  const lastDay = calendarDay(lastDate);
 
   return (
     <>
@@ -58,7 +60,7 @@ export function OpeningDateCalendar({ value, onSelect }: {
           key={selected?.toISOString() ?? "no-date"}
           mode="single"
           timeZone="UTC"
-          today={lastDay}
+          today={calendarDay(today)}
           defaultMonth={selected ?? lastDay}
           startMonth={calendarDay("0001-01-01")}
           endMonth={lastDay}
@@ -67,7 +69,7 @@ export function OpeningDateCalendar({ value, onSelect }: {
           onSelect={(day) => {
             if (!day) return;
             const date = day.toISOString().slice(0, 10);
-            if (date > singaporeCalendarDate()) return;
+            if (date > singaporeCalendarDate() || (earliestActivityDate && date > earliestActivityDate)) return;
             onSelect(date);
             dialog.current?.close();
           }}

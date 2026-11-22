@@ -1,24 +1,35 @@
 import {
+  accountOpeningAfterActivityMessage,
   correctFinancialAccount,
+  currentSingaporeMonth,
   financialAccountErrors,
   financialAccountResponses,
   openFinancialAccount,
+  reportingPeriodQuery,
 } from "@finscope/contracts/financial-accounts";
 import type {
   CorrectFinancialAccount,
   FinancialAccount,
+  FinancialAccountOverview,
   OpenFinancialAccount,
+  ReportingPeriod,
 } from "@finscope/contracts/financial-accounts";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { AuthorizeOwner } from "./authorization.ts";
-import { summarizeFinancialAccounts } from "./summary.ts";
+import { registerTransactionRoutes } from "../transactions/routes.ts";
+import type { TransactionRepository } from "../transactions/routes.ts";
 
-export type FinancialAccountRepository = {
-  list: (ownerUserId: string) => Promise<FinancialAccount[]>;
+type AccountCorrection =
+  | { status: "saved"; account: FinancialAccount }
+  | { status: "not_found" }
+  | { status: "after_activity"; activityDate: string };
+
+export type FinancialAccountRepository = TransactionRepository & {
+  list: (ownerUserId: string, period: ReportingPeriod) => Promise<FinancialAccountOverview>;
   open: (ownerUserId: string, account: OpenFinancialAccount) => Promise<FinancialAccount>;
-  delete: (ownerUserId: string, accountId: string) => Promise<boolean>;
-  correct: (ownerUserId: string, accountId: string, input: CorrectFinancialAccount) => Promise<FinancialAccount | undefined>;
+  delete: (ownerUserId: string, accountId: string) => Promise<"deleted" | "not_found" | "linked_activity">;
+  correct: (ownerUserId: string, accountId: string, input: CorrectFinancialAccount) => Promise<AccountCorrection>;
 };
 
 export type FinancialAccountsOptions = {
@@ -55,12 +66,17 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
   });
 
   api.get("/financial-accounts", async (request, reply) => {
-    const accounts = await repository.list(request.getDecorator<string>("workspaceOwnerId"));
-    return reply.send(financialAccountResponses.list[200].parse({
-      accounts,
-      summary: summarizeFinancialAccounts(accounts),
-    }));
+    const query = reportingPeriodQuery.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send(financialAccountResponses.list[400].parse({ status: "invalid_request" }));
+    }
+    const { from, to } = query.data;
+    const period = from && to ? { from, to } : currentSingaporeMonth();
+    const overview = await repository.list(request.getDecorator<string>("workspaceOwnerId"), period);
+    return reply.send(financialAccountResponses.list[200].parse(overview));
   });
+
+  registerTransactionRoutes(api, repository);
 
   api.post("/financial-accounts", async (request, reply) => {
     const input = openFinancialAccount.safeParse(request.body);
@@ -79,8 +95,11 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
     }
 
     const removed = await repository.delete(request.getDecorator<string>("workspaceOwnerId"), params.data.accountId);
-    if (!removed) {
+    if (removed === "not_found") {
       return reply.code(404).send(financialAccountResponses.delete[404].parse({ status: "not_found" }));
+    }
+    if (removed === "linked_activity") {
+      return reply.code(409).send(financialAccountResponses.delete[409].parse({ status: "linked_activity" }));
     }
     return reply.code(204).send();
   });
@@ -95,13 +114,19 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
       return reply.code(400).send(invalidAccountInput(input.error));
     }
 
-    const account = await repository.correct(
+    const result = await repository.correct(
       request.getDecorator<string>("workspaceOwnerId"), params.data.accountId, input.data,
     );
-    if (!account) {
+    if (result.status === "not_found") {
       return reply.code(404).send(financialAccountResponses.correct[404].parse({ status: "not_found" }));
     }
 
-    return reply.send(financialAccountResponses.correct[200].parse(account));
+    if (result.status === "after_activity") {
+      return reply.code(400).send(financialAccountResponses.correct[400].parse({
+        status: "invalid_request",
+        openingDateError: accountOpeningAfterActivityMessage(result.activityDate),
+      }));
+    }
+    return reply.send(financialAccountResponses.correct[200].parse(result.account));
   });
 };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { correctFinancialAccount, openFinancialAccount } from "@finscope/contracts/financial-accounts";
+import { correctFinancialAccount, currentSingaporeMonth, openFinancialAccount } from "@finscope/contracts/financial-accounts";
 import { test, vi } from "vitest";
 import { createApi } from "../src/app.ts";
 import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
@@ -55,6 +55,9 @@ test("direct reads and writes reject missing and unverified tokens and another G
     accounts: {
       authorize,
       repository: {
+        listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
+        correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
+        recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
         delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => assert.fail("Unauthorized request reached storage"),
         open: async () => assert.fail("Unauthorized request reached storage"),
@@ -83,6 +86,15 @@ test("direct reads and writes reject missing and unverified tokens and another G
       url: "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d",
       headers,
     });
+    for (const [method, url] of [
+      ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/transactions"],
+      ["POST", "/transactions"],
+      ["PATCH", "/transactions/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
+    ] as const) {
+      const response = await app.inject({ method, url, headers });
+      assert.equal(response.statusCode, status);
+      assert.equal(response.headers["cache-control"], "no-store");
+    }
     assert.equal(removal.statusCode, status);
     const correction = await app.inject({
       method: "PATCH",
@@ -180,7 +192,7 @@ test("an owner can correct an account in place and see the new opening balance a
   };
   assert.deepEqual(correction.json(), corrected);
   const withImmutableFields = { ...corrected, id: randomUUID(), ownerUserId: randomUUID(), type: "brokerage" };
-  assert.deepEqual(await repository.correct(workspaceOwner, ids[0], withImmutableFields), corrected);
+  assert.deepEqual(await repository.correct(workspaceOwner, ids[0], withImmutableFields), { status: "saved", account: corrected });
 
   const rejectedCorrection = await first.inject({
     method: "PATCH",
@@ -213,18 +225,18 @@ test("an owner can correct an account in place and see the new opening balance a
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json(), {
     accounts: [
-      corrected,
-      { ...brokerage, id: ids[1], openingBalance: "0.00" },
+      { ...corrected, balance: "3250.00", earliestActivityDate: null },
+      { ...brokerage, id: ids[1], openingBalance: "0.00", balance: "0.00", earliestActivityDate: null },
     ],
-    summary: { currency: "SGD", balance: "3250.00", income: "0.00", expenses: "0.00" },
+    summary: { currency: "SGD", balance: "3250.00", income: "0.00", expenses: "0.00", netCashflow: "0.00", ...currentSingaporeMonth() },
   });
   const remove = () => second.inject({ method: "DELETE", url: removalUrl, headers });
   assert.equal((await remove()).statusCode, 204);
   assert.equal((await remove()).statusCode, 404);
   const afterRemoval = await second.inject({ method: "GET", url: "/financial-accounts", headers });
   assert.deepEqual(afterRemoval.json(), {
-    accounts: [{ ...brokerage, id: ids[1], openingBalance: "0.00" }],
-    summary: { currency: "SGD", balance: "0.00", income: "0.00", expenses: "0.00" },
+    accounts: [{ ...brokerage, id: ids[1], openingBalance: "0.00", balance: "0.00", earliestActivityDate: null }],
+    summary: { currency: "SGD", balance: "0.00", income: "0.00", expenses: "0.00", netCashflow: "0.00", ...currentSingaporeMonth() },
   });
 
 });
@@ -242,10 +254,13 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     accounts: {
       authorize: async () => ({ status: "authorized", ownerUserId }),
       repository: {
+        listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
+        correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
+        recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
         delete: async () => assert.fail("Unexpected deletion reached storage"),
-        list: async () => [],
+        list: async () => assert.fail("Unexpected list reached storage"),
         open: async (_owner, input) => ({ ...input, id: accountId }),
-        correct: async (_owner, id, input) => ({ ...openingAccount, ...input, id, type: "bank", currency: "SGD" }),
+        correct: async (_owner, id, input) => ({ status: "saved", account: { ...openingAccount, ...input, id, type: "bank", currency: "SGD" } }),
       },
     },
   });

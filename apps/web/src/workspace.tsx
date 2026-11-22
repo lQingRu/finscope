@@ -1,30 +1,19 @@
 import { OpeningDateCalendar } from "./opening-date-calendar";
-import { accountTypes, correctFinancialAccount } from "@finscope/contracts/financial-accounts";
-import type { CorrectFinancialAccount, FinancialAccount } from "@finscope/contracts/financial-accounts";
+import { accountOpeningAfterActivityMessage, accountTypes, correctFinancialAccount, currentSingaporeMonth, customReportingPeriod } from "@finscope/contracts/financial-accounts";
+import type { AccountWithBalance, CorrectFinancialAccount, FinancialAccount, ReportingPeriod } from "@finscope/contracts/financial-accounts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Session } from "@supabase/supabase-js";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { FormEvent } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AccountApiError, correctAccount, deleteAccount, isAccessError, listAccounts, openAccount } from "./account-api";
 import { Button } from "./components/ui/button";
 
-const amountFormat = new Intl.NumberFormat("en-SG", {
-  style: "currency",
-  currency: "SGD",
-  currencyDisplay: "code",
-});
-function formatSgd(amount: string) {
-  // The response contract validates the decimal string before it reaches the formatter.
-  return amountFormat.format(amount as `${number}`);
-}
-
-const dateFormat = new Intl.DateTimeFormat("en-SG", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
+import { formatDate, formatSgd } from "./financial-format";
+import { FormField, inputStyle } from "./form-field";
+import { TransactionForm } from "./transaction-form";
+import { TransactionHistory } from "./transaction-history";
 
 const accountTypeLabels = { bank: "Bank", brokerage: "Brokerage" };
 const emptyForm = { name: "", openingDate: "", openingBalance: "" };
@@ -34,7 +23,9 @@ export const accountsQueryKey = ["financial-accounts"] as const;
 
 type AccountFormContext = { token: string; queryKey: readonly string[] };
 
-function AccountRow({ account, token, queryKey }: AccountFormContext & { account: FinancialAccount }) {
+type HistoryControl = { historyId?: string; onHistory: (accountId: string) => void };
+
+function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { account: AccountWithBalance }) {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState("");
   const editButton = useRef<HTMLButtonElement>(null);
@@ -50,7 +41,7 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
       document.getElementById("accounts-heading")?.focus();
     },
     onError: async (error) => {
-      if (isAccessError(error) || (error instanceof AccountApiError && error.status === 404)) {
+      if (isAccessError(error) || (error instanceof AccountApiError && [404, 409].includes(error.status))) {
         await queryClient.invalidateQueries({ queryKey });
       }
     },
@@ -68,11 +59,17 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
           <h3 className="font-semibold break-words">{account.name}</h3>
           <p className="mt-1 text-sm text-[#495e55]">
             {accountTypeLabels[account.type]} · Opened{" "}
-            <time dateTime={account.openingDate}>{dateFormat.format(new Date(account.openingDate))}</time>
+            <time dateTime={account.openingDate}>{formatDate(account.openingDate)}</time>
           </p>
+          <p className="mt-1 text-sm text-[#495e55]">Opening balance {formatSgd(account.openingBalance)}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 sm:justify-end">
-          <span className="font-semibold tabular-nums">{formatSgd(account.openingBalance)}</span>
+          <span className="max-w-full break-words font-semibold tabular-nums">{formatSgd(account.balance)}</span>
+          <Button id={`history-${account.id}`} variant="outline" aria-label={`View history for ${account.name}`}
+            aria-expanded={historyId === account.id}
+            aria-controls={historyId === account.id ? "account-transaction-history" : undefined}
+            onClick={() => onHistory(account.id)}
+          >View history</Button>
           <Button
             ref={editButton}
             variant="outline"
@@ -85,20 +82,27 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
           >
             Edit
           </Button>
-          <Button type="button" variant="outline" aria-label={`Delete ${account.name}`} disabled={editing} onClick={() => {
+          <Button type="button" variant="outline" aria-label={`Delete ${account.name}`} disabled={editing || Boolean(account.earliestActivityDate)}
+            aria-describedby={account.earliestActivityDate ? `linked-activity-${account.id}` : undefined}
+            onClick={() => {
             removal.reset();
             deleteDialog.current?.showModal();
           }}>Delete</Button>
         </div>
       </div>
+      {account.earliestActivityDate && (
+        <p id={`linked-activity-${account.id}`} className="mt-2 text-sm text-[#495e55]">Accounts with recorded transactions cannot be deleted.</p>
+      )}
       <dialog ref={deleteDialog} aria-labelledby={deleteTitle} className="m-auto w-full max-w-sm rounded-xl p-5 shadow-lg backdrop:bg-black/40"
         onCancel={(event) => { if (removal.isPending) event.preventDefault(); }}>
         <h4 id={deleteTitle} className="font-semibold">Delete {account.name}?</h4>
         <p className="my-3 text-sm">This permanently deletes the account and removes its opening balance from total cash.</p>
-        {removal.isError && <p role="alert" className="mb-3 text-sm">The deletion could not be confirmed. Check the account list before trying again.</p>}
+        {removal.isError && <p role="alert" className="mb-3 text-sm">{removal.error instanceof AccountApiError && removal.error.status === 409
+          ? "This account has recorded activity and cannot be deleted."
+          : "The deletion could not be confirmed. Check the account list before trying again."}</p>}
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" autoFocus disabled={removal.isPending} onClick={() => deleteDialog.current?.close()}>Cancel</Button>
-          <Button type="button" disabled={removal.isPending} onClick={() => removal.mutate()}>
+          <Button type="button" disabled={removal.isPending || Boolean(account.earliestActivityDate)} onClick={() => removal.mutate()}>
             {removal.isPending ? "Deleting…" : "Delete account"}
           </Button>
         </div>
@@ -120,7 +124,7 @@ function AccountRow({ account, token, queryKey }: AccountFormContext & { account
   );
 }
 
-function AccountList({ accounts, token, queryKey }: AccountFormContext & { accounts: FinancialAccount[] }) {
+function AccountList({ accounts, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { accounts: AccountWithBalance[] }) {
   return (
     <section aria-labelledby="accounts-heading">
       <h2 id="accounts-heading" tabIndex={-1} className="mb-3 text-lg font-semibold">Financial accounts</h2>
@@ -131,7 +135,7 @@ function AccountList({ accounts, token, queryKey }: AccountFormContext & { accou
       ) : (
         <ul className="divide-y divide-[#e0e8e2] overflow-hidden rounded-xl border border-[#d8e4db] bg-white">
           {accounts.map((account) => (
-            <AccountRow key={account.id} account={account} token={token} queryKey={queryKey} />
+            <AccountRow key={account.id} account={account} token={token} queryKey={queryKey} historyId={historyId} onHistory={onHistory} />
           ))}
         </ul>
       )}
@@ -139,11 +143,9 @@ function AccountList({ accounts, token, queryKey }: AccountFormContext & { accou
   );
 }
 
-const inputStyle = "min-h-11 w-full min-w-0 rounded-lg border border-[#c5d3ca] bg-white px-3 py-2 text-base text-[#16302c] outline-none focus-visible:border-[#3f705e] focus-visible:ring-2 focus-visible:ring-[#b8d5c5] aria-invalid:border-[#a63624]";
-
 type AccountFormProps = AccountFormContext & (
   | { account?: undefined; onCancel?: never; onCorrected?: never }
-  | { account: FinancialAccount; onCancel: () => void; onCorrected: (saved: FinancialAccount) => void }
+  | { account: AccountWithBalance; onCancel: () => void; onCorrected: (saved: FinancialAccount) => void }
 );
 
 function AccountForm({ token, queryKey, account, onCancel, onCorrected }: AccountFormProps) {
@@ -159,7 +161,13 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
       openingDate: account.openingDate,
       openingBalance: account.openingBalance,
     } : emptyForm,
-    resolver: zodResolver(correctFinancialAccount),
+    resolver: zodResolver(correctFinancialAccount.superRefine(({ openingDate }, context) => {
+      if (account?.earliestActivityDate && openingDate > account.earliestActivityDate) {
+        context.addIssue({
+          code: "custom", path: ["openingDate"], message: accountOpeningAfterActivityMessage(account.earliestActivityDate),
+        });
+      }
+    })),
   });
 
   const editing = Boolean(account);
@@ -249,7 +257,7 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
             aria-describedby={errors.openingDate ? `${id}-opening-date-error` : undefined}
             {...register("openingDate")}
           />
-          <OpeningDateCalendar value={watch("openingDate")} onSelect={(date) => {
+          <OpeningDateCalendar value={watch("openingDate")} earliestActivityDate={account?.earliestActivityDate} onSelect={(date) => {
             setValue("openingDate", date, { shouldDirty: true, shouldValidate: true });
           }} />
           {errors.openingDate && <p id={`${id}-opening-date-error`} className="text-sm text-[#8f3023]">{errors.openingDate.message}</p>}
@@ -288,10 +296,13 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
 }
 
 export function Workspace({ session }: { session: Session }) {
+  const [period, setPeriod] = useState<ReportingPeriod>();
+  const [historyId, setHistoryId] = useState<string>();
   const queryKey = [...accountsQueryKey, session.user.id];
   const accounts = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => listAccounts(session.access_token, signal),
+    queryKey: [...queryKey, "overview", period],
+    queryFn: ({ signal }) => listAccounts(session.access_token, period, signal),
+    placeholderData: keepPreviousData,
     retry: (failureCount, error) => !isAccessError(error) && failureCount < 1,
   });
 
@@ -316,35 +327,124 @@ export function Workspace({ session }: { session: Session }) {
             ? "Your session could not be verified. Sign out and sign in again."
             : "FinScope couldn’t load your financial accounts."}
         </p>
-        {!isAccessError(accounts.error) && <Button variant="outline" className="mt-4" onClick={() => void accounts.refetch()}>Try again</Button>}
+        {!isAccessError(accounts.error) && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => void accounts.refetch()}>Try again</Button>
+            {period && <Button variant="outline" onClick={() => setPeriod(undefined)}>Use this month</Button>}
+          </div>
+        )}
       </section>
     );
   }
 
-  const { summary } = accounts.data;
+  const { summary, accounts: ownedAccounts } = accounts.data;
+  const selectedAccount = ownedAccounts.find(({ id }) => id === historyId);
+  const token = session.access_token;
   return (
     <>
-      <h1 className="mb-6 text-3xl font-semibold tracking-tight sm:text-4xl">Account overview</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Account overview</h1>
+        {ownedAccounts.length > 0 && (
+          <Button onClick={() => document.getElementById("record-transaction-heading")?.focus()}>Record a transaction</Button>
+        )}
+      </div>
+      <section className="mb-6 grid gap-4" aria-label="Financial summary">
+        <ReportingPeriodForm period={period} onChange={setPeriod} />
+        <p role="status" className="text-sm text-[#495e55]">
+          {accounts.isPlaceholderData
+            ? "Loading reporting period…"
+            : <>Reporting period <time dateTime={summary.from}>{formatDate(summary.from)}</time> to <time dateTime={summary.to}>{formatDate(summary.to)}</time></>}
+        </p>
+        <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {([
+            ["Total balance", summary.balance],
+            ["Income", summary.income],
+            ["Expenses", summary.expenses],
+            ["Net cashflow", summary.netCashflow],
+          ] as const).map(([label, amount], index) => (
+            <div key={label} className={index === 0
+              ? "min-w-0 rounded-xl bg-[#17382f] p-4 text-white"
+              : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-4"}>
+              <dt className={index === 0 ? "text-sm text-[#d4e9df]" : "text-sm text-[#495e55]"}>{label}</dt>
+              <dd className="mt-2 text-lg font-semibold break-words tabular-nums">{formatSgd(amount)}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="grid gap-6">
-          <dl className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-[#17382f] p-4 text-white">
-              <dt className="text-sm text-[#d4e9df]">Total balance</dt>
-              <dd className="mt-2 text-lg font-semibold break-words tabular-nums">{formatSgd(summary.balance)}</dd>
-            </div>
-            <div className="rounded-xl border border-[#d8e4db] bg-white p-4">
-              <dt className="text-sm text-[#495e55]">Income</dt>
-              <dd className="mt-2 text-lg font-semibold break-words tabular-nums">{formatSgd(summary.income)}</dd>
-            </div>
-            <div className="rounded-xl border border-[#d8e4db] bg-white p-4">
-              <dt className="text-sm text-[#495e55]">Expenses</dt>
-              <dd className="mt-2 text-lg font-semibold break-words tabular-nums">{formatSgd(summary.expenses)}</dd>
-            </div>
-          </dl>
-          <AccountList accounts={accounts.data.accounts} token={session.access_token} queryKey={queryKey} />
+        <div className="grid min-w-0 gap-6">
+          <AccountList accounts={ownedAccounts} token={token} queryKey={queryKey} historyId={historyId} onHistory={(id) => {
+            if (id === historyId) {
+              document.querySelector<HTMLElement>("#account-transaction-history h2")?.focus();
+            } else {
+              setHistoryId(id);
+            }
+          }} />
+          {selectedAccount && (
+            <TransactionHistory key={selectedAccount.id} account={selectedAccount} accounts={ownedAccounts}
+              token={token} queryKey={queryKey}
+              onClose={() => {
+                setHistoryId(undefined);
+                document.getElementById(`history-${selectedAccount.id}`)?.focus();
+              }}
+            />
+          )}
         </div>
-        <AccountForm token={session.access_token} queryKey={queryKey} />
+        <div className="grid min-w-0 gap-6">
+          {ownedAccounts.length > 0 && <TransactionForm accounts={ownedAccounts} token={token} queryKey={queryKey} />}
+          <AccountForm token={token} queryKey={queryKey} />
+        </div>
       </div>
     </>
+  );
+}
+
+function ReportingPeriodForm({ period, onChange }: {
+  period?: ReportingPeriod;
+  onChange: (period?: ReportingPeriod) => void;
+}) {
+  const [draft, setDraft] = useState<ReportingPeriod>();
+  const input = draft ?? period ?? currentSingaporeMonth();
+  const [error, setError] = useState("");
+
+  function applyPeriod(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = customReportingPeriod.safeParse(input);
+    if (!result.success) {
+      setError(result.error.issues[0].message);
+      return;
+    }
+    setError("");
+    onChange(result.data);
+  }
+
+  return (
+    <form aria-label="Select reporting period" onSubmit={applyPeriod} noValidate>
+      <div className="grid items-end gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,13rem)_auto] sm:justify-start">
+        <FormField label="Reporting start date">
+          {(attributes) => (
+            <input {...attributes} required type="date" min="0001-01-01" max={input.to || "9999-12-31"} value={input.from}
+              onChange={(event) => setDraft({ ...input, from: event.currentTarget.value })} />
+          )}
+        </FormField>
+        <FormField label="Reporting end date">
+          {(attributes) => (
+            <input {...attributes} required type="date" min={input.from || "0001-01-01"} max="9999-12-31" value={input.to}
+              onChange={(event) => setDraft({ ...input, to: event.currentTarget.value })} />
+          )}
+        </FormField>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" variant="outline">Apply period</Button>
+          {period && (
+            <Button variant="outline" onClick={() => {
+              setDraft(undefined);
+              setError("");
+              onChange(undefined);
+            }}>This month</Button>
+          )}
+        </div>
+      </div>
+      {error && <p role="alert" className="mt-2 text-sm text-[#8f3023]">{error}</p>}
+    </form>
   );
 }

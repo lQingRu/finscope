@@ -1,0 +1,167 @@
+import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
+import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
+import {
+  defaultTransactionCategory,
+  transactionBeforeOpeningMessage,
+  transactionCategories,
+  transactionInput,
+} from "@finscope/contracts/transactions";
+import type { Transaction, TransactionInput } from "@finscope/contracts/transactions";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { isAccessError } from "./account-api";
+import { Button } from "./components/ui/button";
+import { FormField } from "./form-field";
+import { saveTransaction, TransactionApiError } from "./transaction-api";
+
+const transactionFields = ["accountId", "type", "amount", "date", "category", "description"] as const;
+
+function blankTransaction(accountId: string): TransactionInput {
+  return {
+    accountId, type: "expense", category: defaultTransactionCategory.expense,
+    amount: "", date: singaporeCalendarDate(), description: "",
+  };
+}
+
+type TransactionFormProps = {
+  accounts: FinancialAccount[];
+  token: string;
+  queryKey: readonly string[];
+} & (
+  | { transaction?: undefined; onCancel?: never; onCorrected?: never }
+  | { transaction: Transaction; onCancel: () => void; onCorrected: (saved: Transaction) => void }
+);
+
+export function TransactionForm({ accounts, token, queryKey, transaction, onCancel, onCorrected }: TransactionFormProps) {
+  const client = useQueryClient();
+  const id = useId();
+  const [notice, setNotice] = useState("");
+  const initialAccount = accounts.length === 1 ? accounts[0].id : "";
+  const {
+    control, register, handleSubmit, reset, setError, setFocus, setValue, watch, formState: { errors },
+  } = useForm<TransactionInput>({
+    defaultValues: transaction
+      ? {
+        accountId: transaction.accountId, type: transaction.type, amount: transaction.amount, date: transaction.date,
+        category: transaction.category, description: transaction.description ?? "",
+      }
+      : blankTransaction(initialAccount),
+    resolver: zodResolver(transactionInput.superRefine(({ accountId, date }, context) => {
+      const account = accounts.find(({ id }) => id === accountId);
+      if (!account) {
+        context.addIssue({ code: "custom", path: ["accountId"], message: "Select an available financial account." });
+      } else if (date < account.openingDate) {
+        context.addIssue({ code: "custom", path: ["date"], message: transactionBeforeOpeningMessage(account.openingDate) });
+      }
+    })),
+  });
+  const selectedAccount = accounts.find(({ id }) => id === watch("accountId"));
+  const type = watch("type");
+  const editing = Boolean(transaction);
+  useEffect(() => {
+    if (editing) setFocus("accountId");
+  }, [editing, setFocus]);
+
+  const save = useMutation({
+    mutationFn: (input: TransactionInput) => saveTransaction(token, input, transaction?.id),
+    onMutate: () => setNotice(""),
+    onSuccess: async (saved) => {
+      if (onCorrected) {
+        onCorrected(saved);
+      } else {
+        reset(blankTransaction(saved.accountId));
+        setNotice("Transaction recorded.");
+      }
+      await client.invalidateQueries({ queryKey });
+    },
+    onError: async (error) => {
+      if (error instanceof TransactionApiError && error.fieldErrors) {
+        const firstField = transactionFields.find((name) => error.fieldErrors?.[name]);
+        for (const name of transactionFields) {
+          const message = error.fieldErrors[name];
+          if (message) setError(name, { message });
+        }
+        if (firstField) requestAnimationFrame(() => setFocus(firstField));
+      }
+      if (isAccessError(error) || (error instanceof TransactionApiError && [400, 404].includes(error.status))) {
+        await client.invalidateQueries({ queryKey });
+      }
+    },
+  });
+  const fieldErrors = save.error instanceof TransactionApiError ? save.error.fieldErrors : undefined;
+  const errorHasField = transactionFields.some((name) => fieldErrors?.[name]);
+  const headingId = editing ? id : "record-transaction-heading";
+  const submitLabel = editing
+    ? (save.isPending ? "Saving changes…" : "Save transaction")
+    : (save.isPending ? "Recording transaction…" : "Record transaction");
+
+  return (
+    <section aria-labelledby={headingId} className={editing
+      ? "mt-4 border-t border-[#e0e8e2] pt-4"
+      : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-5 shadow-sm sm:p-6"}
+    >
+      {editing
+        ? <h4 id={headingId} className="font-semibold">Edit transaction</h4>
+        : <h2 id={headingId} tabIndex={-1} className="text-lg font-semibold">Record a transaction</h2>}
+      <form className="mt-4" noValidate onSubmit={handleSubmit((input) => save.mutate(input))}>
+        <fieldset disabled={save.isPending} className="grid min-w-0 gap-4">
+          <FormField label="Financial account" error={errors.accountId?.message}>
+            {(attributes) => (
+              <select {...attributes} required {...register("accountId")}>
+                <option value="">Select an account</option>
+                {accounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            )}
+          </FormField>
+          <FormField label="Transaction type" error={errors.type?.message}>
+            {(attributes) => (
+              <select {...attributes} required {...register("type", {
+                onChange: (event) => {
+                  const selected = event.target.value as TransactionInput["type"];
+                  setValue("category", defaultTransactionCategory[selected], { shouldDirty: true, shouldValidate: true });
+                },
+              })}>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            )}
+          </FormField>
+          <FormField label="Amount (SGD)" error={errors.amount?.message}>
+            {(attributes) => <input {...attributes} required inputMode="decimal" autoComplete="off" placeholder="0.00" {...register("amount")} />}
+          </FormField>
+          <FormField label="Transaction date" error={errors.date?.message}>
+            {(attributes) => <input {...attributes} required type="date" min={selectedAccount?.openingDate ?? "0001-01-01"} max="9999-12-31" {...register("date")} />}
+          </FormField>
+          <FormField label="Category" error={errors.category?.message}>
+            {(attributes) => (
+              <Controller name="category" control={control} render={({ field }) => (
+                <select {...attributes} {...field} required>
+                  {transactionCategories[type].map((category) => <option key={category} value={category}>{category}</option>)}
+                </select>
+              )} />
+            )}
+          </FormField>
+          <FormField label="Description (optional)" error={errors.description?.message}>
+            {(attributes) => <textarea {...attributes} rows={2} {...register("description")} />}
+          </FormField>
+          <div className={editing ? "grid gap-2 sm:flex sm:justify-end" : "grid"}>
+            {onCancel && <Button variant="outline" onClick={onCancel}>Cancel</Button>}
+            <Button type="submit">{submitLabel}</Button>
+          </div>
+        </fieldset>
+        {save.isError && !errorHasField && (
+          <p role="alert" className="mt-3 text-sm text-[#8f3023]">
+            {isAccessError(save.error)
+              ? "Your session no longer has access. Sign out and try again."
+              : save.error instanceof TransactionApiError && save.error.status === 404
+                ? "This transaction is no longer available."
+                : "FinScope couldn’t confirm the save. Check the account history before trying again."}
+          </p>
+        )}
+        {notice && <p role="status" className="mt-3 text-sm text-[#286347]">{notice}</p>}
+      </form>
+    </section>
+  );
+}
