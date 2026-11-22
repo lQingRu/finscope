@@ -1,6 +1,7 @@
 import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
 import { transactionCategories, transactionHistoryQuery } from "@finscope/contracts/transactions";
 import type { Transaction, TransactionHistoryQuery } from "@finscope/contracts/transactions";
+import type { Transfer } from "@finscope/contracts/transfers";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
@@ -12,13 +13,14 @@ import { formatDate, formatSgd } from "./financial-format";
 import { FormField } from "./form-field";
 import { listTransactions, TransactionApiError } from "./transaction-api";
 import { TransactionForm } from "./transaction-form";
+import { TransferForm } from "./transfer-form";
 
 const emptyFilters = { type: "", category: "", from: "", to: "" };
 const historyFilterForm = z.preprocess(
   (input: typeof emptyFilters) => Object.fromEntries(Object.entries(input).filter(([, value]) => value !== "")),
   transactionHistoryQuery,
 );
-type TransactionEditor = { transactionId: string };
+type HistoryEditor = { kind: "transaction" | "transfer"; id: string };
 
 export function TransactionHistory({ account, accounts, token, queryKey, onClose }: {
   account: FinancialAccount;
@@ -28,8 +30,8 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   onClose: () => void;
 }) {
   const [filters, setFilters] = useState<TransactionHistoryQuery>({});
-  const [editor, setEditor] = useState<TransactionEditor>();
-  const activeEditor = useRef<TransactionEditor | undefined>(undefined);
+  const [editor, setEditor] = useState<HistoryEditor>();
+  const activeEditor = useRef<HistoryEditor | undefined>(undefined);
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm({
     defaultValues: emptyFilters,
     resolver: zodResolver(historyFilterForm),
@@ -46,7 +48,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   });
   useEffect(() => { heading.current?.focus(); }, []);
 
-  function changeEditor(next?: TransactionEditor) {
+  function changeEditor(next?: HistoryEditor) {
     activeEditor.current = next;
     setEditor(next);
   }
@@ -61,18 +63,25 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
     ? transactionCategories[type]
     : [...transactionCategories.income, ...transactionCategories.expense];
 
-  function finishEditing(editor: TransactionEditor, transaction?: Transaction) {
+  const entries = history.data && [...history.data.transactions, ...(history.data.transfers ?? [])]
+    .sort((first, second) => second.date.localeCompare(first.date));
+
+  function finishEditing(editor: HistoryEditor, saved?: Transaction | Transfer) {
     if (activeEditor.current !== editor) return;
     changeEditor();
-    if (transaction) {
-      const destination = accounts.find(({ id }) => id === transaction.accountId);
+    if (!saved) {
+      document.getElementById(`edit-${editor.kind}-${editor.id}`)?.focus();
+      return;
+    }
+    if ("accountId" in saved) {
+      const destination = accounts.find(({ id }) => id === saved.accountId);
       setNotice(destination && destination.id !== account.id
         ? `Transaction moved to ${destination.name}.`
         : "Transaction updated.");
-      heading.current?.focus();
     } else {
-      document.getElementById(`edit-transaction-${editor.transactionId}`)?.focus();
+      setNotice("Transfer updated.");
     }
+    heading.current?.focus();
   }
 
   return (
@@ -141,43 +150,61 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
         </div>
       )}
       {notice && <p role="status" className="mt-4 text-sm text-[#286347]">{notice}</p>}
-      {history.data?.length === 0 && (
+      {entries?.length === 0 && (
         <p className="mt-4 border-t border-[#e0e8e2] pt-4 text-sm text-[#495e55]">
           {Object.keys(filters).length ? "No transactions match these filters." : "No transactions recorded for this account."}
         </p>
       )}
-      {history.data && history.data.length > 0 && (
+      {entries && entries.length > 0 && (
         <ul className="mt-4 divide-y divide-[#e0e8e2] border-t border-[#e0e8e2]">
-          {history.data.map((transaction) => {
-            const editing = editor?.transactionId === transaction.id;
-            const income = transaction.type === "income";
+          {entries.map((entry) => {
+            const isTransfer = "direction" in entry;
+            const kind = isTransfer ? "transfer" : "transaction";
+            const editing = editor?.kind === kind && editor.id === entry.id;
+            const credit = isTransfer ? entry.direction === "incoming" : entry.type === "income";
+            const description = !isTransfer && entry.description;
+            let label: string;
+            let typeLabel: string;
+            if (isTransfer) {
+              const otherAccountId = credit ? entry.sourceAccountId : entry.destinationAccountId;
+              const otherAccount = accounts.find(({ id }) => id === otherAccountId);
+              label = otherAccount ? `Transfer ${credit ? "from" : "to"} ${otherAccount.name}` : "Cash transfer";
+              typeLabel = credit ? "Incoming transfer" : "Outgoing transfer";
+            } else {
+              label = entry.category;
+              typeLabel = credit ? "Income" : "Expense";
+            }
+            const editLabel = isTransfer ? typeLabel.toLowerCase() : `${entry.category} transaction`;
             return (
-              <li key={transaction.id} className="py-4 last:pb-0">
+              <li key={`${kind}-${entry.id}`} className="py-4 last:pb-0">
                 <div className="grid items-start gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="min-w-0">
-                    <p className="font-semibold">{transaction.category}</p>
+                    <p className="font-semibold break-words">{label}</p>
                     <p className="mt-1 text-sm text-[#495e55]">
-                      <time dateTime={transaction.date}>{formatDate(transaction.date)}</time> · {income ? "Income" : "Expense"}
+                      <time dateTime={entry.date}>{formatDate(entry.date)}</time> · {typeLabel}
                     </p>
-                    {transaction.description && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{transaction.description}</p>}
+                    {description && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{description}</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <span className={`font-semibold tabular-nums ${income ? "text-[#286347]" : "text-[#8f3023]"}`}>
-                      {income ? "+" : "−"}{formatSgd(transaction.amount)}
+                    <span className={`font-semibold tabular-nums ${credit ? "text-[#286347]" : "text-[#8f3023]"}`}>
+                      {credit ? "+" : "−"}{formatSgd(entry.amount)}
                     </span>
-                    <Button variant="outline" id={`edit-transaction-${transaction.id}`}
-                      aria-label={`Edit ${transaction.category} transaction on ${formatDate(transaction.date)}`} aria-expanded={editing}
+                    <Button variant="outline" id={`edit-${kind}-${entry.id}`}
+                      aria-label={`Edit ${editLabel} on ${formatDate(entry.date)}`} aria-expanded={editing}
                       onClick={() => {
                         if (editing) return;
                         setNotice("");
-                        changeEditor({ transactionId: transaction.id });
+                        changeEditor({ kind, id: entry.id });
                       }}
                     >Edit</Button>
                   </div>
                 </div>
-                {editing && (
-                  <TransactionForm accounts={accounts} token={token} queryKey={queryKey}
-                    transaction={transaction} onCancel={() => finishEditing(editor)}
+                {editing && (isTransfer
+                  ? <TransferForm accounts={accounts} token={token} queryKey={queryKey}
+                    transfer={entry} onCancel={() => finishEditing(editor)}
+                    onCorrected={(saved) => finishEditing(editor, saved)} />
+                  : <TransactionForm accounts={accounts} token={token} queryKey={queryKey}
+                    transaction={entry} onCancel={() => finishEditing(editor)}
                     onCorrected={(saved) => finishEditing(editor, saved)} />
                 )}
               </li>

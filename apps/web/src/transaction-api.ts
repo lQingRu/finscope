@@ -13,10 +13,10 @@ export async function listTransactions(token: string, accountId: string, filters
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined) url.searchParams.set(key, value);
   }
+  url.searchParams.set("includeTransfers", "true");
   const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal });
   if (response.status !== 200) throw new TransactionApiError(response.status);
-  const { transactions } = transactionResponses.list[200].parse(await response.json());
-  return transactions;
+  return transactionResponses.list[200].parse(await response.json());
 }
 
 export async function saveTransaction(token: string, input: TransactionInput, transactionId?: string) {

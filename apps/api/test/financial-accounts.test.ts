@@ -55,6 +55,8 @@ test("direct reads and writes reject missing and unverified tokens and another G
     accounts: {
       authorize,
       repository: {
+        recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
+        correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
@@ -254,6 +256,8 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     accounts: {
       authorize: async () => ({ status: "authorized", ownerUserId }),
       repository: {
+        recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
+        correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),

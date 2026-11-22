@@ -19,13 +19,15 @@ import { z } from "zod";
 import type { AuthorizeOwner } from "./authorization.ts";
 import { registerTransactionRoutes } from "../transactions/routes.ts";
 import type { TransactionRepository } from "../transactions/routes.ts";
+import { registerTransferRoutes } from "../transfers/routes.ts";
+import type { TransferRepository } from "../transfers/routes.ts";
 
 type AccountCorrection =
   | { status: "saved"; account: FinancialAccount }
   | { status: "not_found" }
   | { status: "after_activity"; activityDate: string };
 
-export type FinancialAccountRepository = TransactionRepository & {
+export type FinancialAccountRepository = TransactionRepository & TransferRepository & {
   list: (ownerUserId: string, period: ReportingPeriod) => Promise<FinancialAccountOverview>;
   open: (ownerUserId: string, account: OpenFinancialAccount) => Promise<FinancialAccount>;
   delete: (ownerUserId: string, accountId: string) => Promise<"deleted" | "not_found" | "linked_activity">;
@@ -82,6 +84,7 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
   });
 
   registerTransactionRoutes(api, repository);
+  registerTransferRoutes(api, repository);
 
   api.post("/financial-accounts", async (request, reply) => {
     const input = openFinancialAccount.safeParse(request.body);

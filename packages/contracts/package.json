@@ -7,7 +7,9 @@
     "./calendar-date": "./calendar-date.ts",
     "./health": "./health.ts",
     "./financial-accounts": "./financial-accounts.ts",
-    "./transactions": "./transactions.ts"
+    "./transactions": "./transactions.ts",
+    "./positive-sgd": "./positive-sgd.ts",
+    "./transfers": "./transfers.ts"
   },
   "dependencies": {
     "zod": "^4.3.0"

@@ -361,3 +361,63 @@ test("invalid and out-of-workspace writes preserve the saved transactions and fi
     [foreign],
   );
 });
+
+test("a recorded and corrected cash transfer updates both account histories and balances together", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const sourceAccountId = await workspace.openAccount();
+  const destinationAccountId = await workspace.openAccount({
+    name: "Brokerage", type: "brokerage", openingBalance: "0",
+  });
+  const finalDestination = await workspace.openAccount({ name: "Wallet", openingBalance: "0" });
+  const historyUrl = (id: string) => `/financial-accounts/${id}/transactions?includeTransfers=true`;
+  const overviewUrl = "/financial-accounts?from=2026-11-01&to=2026-11-30";
+  const input = { sourceAccountId, destinationAccountId, amount: "2000", date: "2026-11-03" };
+
+  const created = await workspace.request("POST", "/transfers", input);
+  assert.equal(created.statusCode, 201, created.body);
+  const original = created.json();
+  const transferUrl = `/transfers/${original.id}`;
+  assert.deepEqual(original, { ...input, id: original.id, amount: "2000.00" });
+
+  async function expectOverview(balances: Record<string, string>) {
+    const overview = await workspace.request("GET", overviewUrl);
+    assert.equal(overview.statusCode, 200, overview.body);
+    assert.deepEqual(overview.json().summary, {
+      currency: "SGD", balance: "3000.00", income: "0.00", expenses: "0.00", netCashflow: "0.00",
+      from: "2026-11-01", to: "2026-11-30",
+    });
+    assert.deepEqual(Object.fromEntries(
+      overview.json().accounts.map(({ id, balance }: { id: string; balance: string }) => [id, balance]),
+    ), balances);
+  }
+
+  async function expectHistory(accountId: string, transfers: object[]) {
+    const history = await workspace.request("GET", historyUrl(accountId));
+    assert.equal(history.statusCode, 200, history.body);
+    assert.deepEqual(history.json(), { transactions: [], transfers });
+  }
+
+  await expectOverview({ [sourceAccountId]: "1000.00", [destinationAccountId]: "2000.00", [finalDestination]: "0.00" });
+  await expectHistory(sourceAccountId, [{ ...original, direction: "outgoing" }]);
+  await expectHistory(destinationAccountId, [{ ...original, direction: "incoming" }]);
+
+  const corrected = await workspace.request("PATCH", transferUrl, { ...input, amount: "1800", date: "2026-11-08" });
+  assert.equal(corrected.statusCode, 200, corrected.body);
+  const updated = { ...original, amount: "1800.00", date: "2026-11-08" };
+  assert.deepEqual(corrected.json(), updated);
+  await expectOverview({ [sourceAccountId]: "1200.00", [destinationAccountId]: "1800.00", [finalDestination]: "0.00" });
+  await expectHistory(sourceAccountId, [{ ...updated, direction: "outgoing" }]);
+  await expectHistory(destinationAccountId, [{ ...updated, direction: "incoming" }]);
+
+  const moved = await workspace.request("PATCH", transferUrl, { ...updated, id: undefined, destinationAccountId: finalDestination });
+  assert.equal(moved.statusCode, 200, moved.body);
+  const rejected = await workspace.request("PATCH", transferUrl, { ...input, destinationAccountId: sourceAccountId.toUpperCase() });
+  assert.equal(rejected.statusCode, 400, rejected.body);
+  assert.equal(typeof rejected.json().fieldErrors.destinationAccountId, "string");
+  await expectOverview({ [sourceAccountId]: "1200.00", [destinationAccountId]: "0.00", [finalDestination]: "1800.00" });
+  await expectHistory(sourceAccountId, [{ ...updated, destinationAccountId: finalDestination, direction: "outgoing" }]);
+  await expectHistory(destinationAccountId, []);
+  await expectHistory(finalDestination, [{ ...updated, destinationAccountId: finalDestination, direction: "incoming" }]);
+});

@@ -13,6 +13,7 @@ import { formatDate, formatSgd } from "./financial-format";
 import { FormField, inputStyle } from "./form-field";
 import { TransactionForm } from "./transaction-form";
 import { TransactionHistory } from "./transaction-history";
+import { TransferForm } from "./transfer-form";
 
 const accountTypeLabels = { bank: "Bank", brokerage: "Brokerage" };
 const emptyForm = { name: "", openingDate: "", openingBalance: "" };
@@ -90,7 +91,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
         </div>
       </div>
       {account.earliestActivityDate && (
-        <p id={`linked-activity-${account.id}`} className="mt-2 text-sm text-[#495e55]">Accounts with recorded transactions cannot be deleted.</p>
+        <p id={`linked-activity-${account.id}`} className="mt-2 text-sm text-[#495e55]">Accounts with recorded activity cannot be deleted.</p>
       )}
       <dialog ref={deleteDialog} aria-labelledby={deleteTitle} className="m-auto w-full max-w-sm rounded-xl p-5 shadow-lg backdrop:bg-black/40"
         onCancel={(event) => { if (removal.isPending) event.preventDefault(); }}>
@@ -299,8 +300,10 @@ export function Workspace({ session }: { session: Session }) {
   const [period, setPeriod] = useState<ReportingPeriod>();
   const [historyId, setHistoryId] = useState<string>();
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const recordButton = useRef<HTMLButtonElement>(null);
+  const transferButton = useRef<HTMLButtonElement>(null);
   const openAccountButton = useRef<HTMLButtonElement>(null);
   const queryKey = [...accountsQueryKey, session.user.id];
   const accounts = useQuery({
@@ -310,10 +313,12 @@ export function Workspace({ session }: { session: Session }) {
     retry: (failureCount, error) => !isAccessError(error) && failureCount < 1,
   });
   const canRecordTransaction = Boolean(accounts.data?.accounts.length);
+  const canRecordTransfer = (accounts.data?.accounts.length ?? 0) >= 2;
 
   useEffect(() => {
     if (!canRecordTransaction) setShowTransactionForm(false);
-  }, [canRecordTransaction]);
+    if (!canRecordTransfer) setShowTransferForm(false);
+  }, [canRecordTransaction, canRecordTransfer]);
 
   if (accounts.isPending) {
     return <p role="status" className="text-sm text-[#495e55]">Loading your financial accounts…</p>;
@@ -350,6 +355,8 @@ export function Workspace({ session }: { session: Session }) {
   const selectedAccount = ownedAccounts.find(({ id }) => id === historyId);
   const token = session.access_token;
   const transactionFormVisible = canRecordTransaction && showTransactionForm;
+  const transferFormVisible = canRecordTransfer && showTransferForm;
+  const hasOpenForm = transactionFormVisible || transferFormVisible || showAccountForm;
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -362,6 +369,14 @@ export function Workspace({ session }: { session: Session }) {
                 if (transactionFormVisible) document.getElementById("record-transaction-heading")?.focus();
                 else setShowTransactionForm(true);
               }}>Record a transaction</Button>
+          )}
+          {canRecordTransfer && (
+            <Button ref={transferButton} variant="outline" aria-expanded={transferFormVisible}
+              aria-controls={transferFormVisible ? "record-transfer-form" : undefined}
+              onClick={() => {
+                if (transferFormVisible) document.getElementById("record-transfer-heading")?.focus();
+                else setShowTransferForm(true);
+              }}>Transfer cash</Button>
           )}
           <Button ref={openAccountButton} variant={canRecordTransaction ? "outline" : "default"}
             aria-expanded={showAccountForm} aria-controls={showAccountForm ? "open-account-form" : undefined}
@@ -394,7 +409,7 @@ export function Workspace({ session }: { session: Session }) {
           ))}
         </dl>
       </section>
-      <div className={`grid items-start gap-6${transactionFormVisible || showAccountForm ? " lg:grid-cols-[minmax(0,1fr)_22rem]" : ""}`}>
+      <div className={`grid items-start gap-6${hasOpenForm ? " lg:grid-cols-[minmax(0,1fr)_22rem]" : ""}`}>
         <div className="grid min-w-0 gap-6">
           <AccountList accounts={ownedAccounts} token={token} queryKey={queryKey} historyId={historyId} onHistory={(id) => {
             if (id === historyId) {
@@ -413,12 +428,17 @@ export function Workspace({ session }: { session: Session }) {
             />
           )}
         </div>
-        {(transactionFormVisible || showAccountForm) && (
+        {hasOpenForm && (
           <div className="grid min-w-0 gap-6">
             {transactionFormVisible && <TransactionForm accounts={ownedAccounts} token={token} queryKey={queryKey}
               onCancel={() => {
                 setShowTransactionForm(false);
                 recordButton.current?.focus();
+              }} />}
+            {transferFormVisible && <TransferForm accounts={ownedAccounts} token={token} queryKey={queryKey}
+              onCancel={() => {
+                setShowTransferForm(false);
+                transferButton.current?.focus();
               }} />}
             {showAccountForm && <AccountForm token={token} queryKey={queryKey} onCancel={() => {
               setShowAccountForm(false);

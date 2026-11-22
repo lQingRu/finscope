@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { calendarDateSchema } from "@finscope/contracts/calendar-date";
+import { positiveSgdInput, savedPositiveSgd } from "@finscope/contracts/positive-sgd";
+import { transferHistoryEntry } from "@finscope/contracts/transfers";
 
 export const transactionTypes = ["income", "expense"] as const;
 export const incomeCategories = ["Salary", "Other Income"] as const;
@@ -19,10 +21,7 @@ const transactionCategory = z.enum([...incomeCategories, ...expenseCategories], 
 const transactionFields = z.strictObject({
   accountId: z.uuid("Select a financial account."),
   type: transactionType,
-  amount: z.string().regex(
-    /^(?=.*[1-9])[0-9]{1,12}(?:\.[0-9]{1,2})?$/,
-    "Enter a positive SGD amount with up to 12 whole digits and 2 decimal places.",
-  ),
+  amount: positiveSgdInput,
   date: transactionDate,
   category: transactionCategory,
   description: z.string().trim().refine((value) => !value.includes("\0"), "Enter a description without null characters.").optional(),
@@ -30,6 +29,7 @@ const transactionFields = z.strictObject({
 
 export const transactionHistoryQuery = z.strictObject({
   type: transactionType.optional(),
+  includeTransfers: z.literal("true").optional(),
   category: transactionCategory.optional(),
   from: transactionDate.optional(),
   to: transactionDate.optional(),
@@ -41,7 +41,7 @@ export const transactionInput = transactionFields.refine(
 );
 const savedTransaction = transactionFields.extend({
   id: z.uuid(),
-  amount: z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]*)\.[0-9]{2}$/),
+  amount: savedPositiveSgd,
   description: z.string().nullable(),
 });
 
@@ -65,10 +65,15 @@ const transactionErrors = {
   503: z.object({ status: z.literal("unavailable") }),
 };
 
+const transactionHistory = z.strictObject({
+  transactions: z.array(savedTransaction),
+  transfers: z.array(transferHistoryEntry).optional(),
+});
+
 export const transactionResponses = {
   correct: { ...transactionErrors, 200: savedTransaction },
   record: { ...transactionErrors, 201: savedTransaction },
-  list: { ...transactionErrors, 200: z.strictObject({ transactions: z.array(savedTransaction) }) },
+  list: { ...transactionErrors, 200: transactionHistory },
 };
 
 export function transactionBeforeOpeningMessage(openingDate: string) {
@@ -78,6 +83,7 @@ export function transactionBeforeOpeningMessage(openingDate: string) {
 export type TransactionInput = z.infer<typeof transactionInput>;
 export type Transaction = z.infer<typeof savedTransaction>;
 
+export type AccountHistory = z.infer<typeof transactionHistory>;
 export type TransactionHistoryQuery = z.infer<typeof transactionHistoryQuery>;
 
 export type TransactionFieldErrors = z.infer<typeof transactionFieldErrors>;

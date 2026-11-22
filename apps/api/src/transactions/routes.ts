@@ -4,7 +4,7 @@ import {
   transactionInput,
   transactionResponses,
 } from "@finscope/contracts/transactions";
-import type { Transaction, TransactionHistoryQuery, TransactionInput } from "@finscope/contracts/transactions";
+import type { AccountHistory, Transaction, TransactionHistoryQuery, TransactionInput } from "@finscope/contracts/transactions";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
@@ -15,7 +15,7 @@ export type TransactionWriteResult =
   | { status: "before_opening"; openingDate: string };
 
 export type TransactionRepository = {
-  listTransactions: (ownerUserId: string, accountId: string, filters: TransactionHistoryQuery) => Promise<Transaction[] | undefined>;
+  listTransactions: (ownerUserId: string, accountId: string, filters: TransactionHistoryQuery) => Promise<AccountHistory | undefined>;
   correctTransaction: (ownerUserId: string, transactionId: string, input: TransactionInput) => Promise<TransactionWriteResult>;
   recordTransaction: (ownerUserId: string, input: TransactionInput) => Promise<TransactionWriteResult>;
 };
@@ -31,13 +31,13 @@ export function registerTransactionRoutes(api: FastifyInstance, repository: Tran
       return reply.code(400).send(transactionResponses.list[400].parse({ status: "invalid_request" }));
     }
 
-    const transactions = await repository.listTransactions(
+    const history = await repository.listTransactions(
       request.getDecorator<string>("workspaceOwnerId"), params.data.accountId, query.data,
     );
-    if (!transactions) {
+    if (!history) {
       return reply.code(404).send(transactionResponses.list[404].parse({ status: "not_found" }));
     }
-    return reply.send(transactionResponses.list[200].parse({ transactions }));
+    return reply.send(transactionResponses.list[200].parse(history));
   });
 
   async function saveTransaction(request: FastifyRequest, reply: FastifyReply, transactionId?: string) {
