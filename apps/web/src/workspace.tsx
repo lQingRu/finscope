@@ -143,7 +143,7 @@ function AccountList({ accounts, token, queryKey, historyId, onHistory }: Accoun
 }
 
 type AccountFormProps = AccountFormContext & (
-  | { account?: undefined; onCancel?: never; onCorrected?: never }
+  | { account?: undefined; onCancel: () => void; onCorrected?: never }
   | { account: AccountWithBalance; onCancel: () => void; onCorrected: (saved: FinancialAccount) => void }
 );
 
@@ -169,10 +169,9 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
     })),
   });
 
-  const editing = Boolean(account);
   useEffect(() => {
-    if (editing) setFocus("name");
-  }, [editing, setFocus]);
+    setFocus("name");
+  }, [setFocus]);
 
   const save = useMutation({
     mutationFn: (input: CorrectFinancialAccount) => account
@@ -199,6 +198,7 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
   });
 
   const heading = account ? "Edit financial account" : "Open a financial account";
+  const headingId = account ? `${id}-heading` : "open-account-heading";
   const submitLabel = account
     ? (save.isPending ? "Saving changes…" : "Save changes")
     : (save.isPending ? "Opening account…" : "Open account");
@@ -208,12 +208,13 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
     <section
       className={account
         ? "mt-4 border-t border-[#e0e8e2] pt-4"
-        : "rounded-xl border border-[#d8e4db] bg-white p-5 shadow-sm sm:p-6"}
-      aria-labelledby={`${id}-heading`}
+        : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-5 shadow-sm sm:p-6"}
+      aria-labelledby={headingId}
+      id={account ? undefined : "open-account-form"}
     >
       {account
-        ? <h4 id={`${id}-heading`} className="text-base font-semibold">{heading}</h4>
-        : <h2 id={`${id}-heading`} className="text-lg font-semibold">{heading}</h2>}
+        ? <h4 id={headingId} className="text-base font-semibold">{heading}</h4>
+        : <h2 id={headingId} tabIndex={-1} className="text-lg font-semibold">{heading}</h2>}
       <form className="mt-5 grid gap-4" noValidate onSubmit={handleSubmit((input) => save.mutate(input))}>
         <div className="grid gap-1.5">
           <label htmlFor={`${id}-account-name`} className="text-sm font-semibold">Account name</label>
@@ -275,8 +276,8 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
           />
           {errors.openingBalance && <p id={`${id}-opening-balance-error`} className="text-sm text-[#8f3023]">{errors.openingBalance.message}</p>}
         </div>
-        <div className={account ? "grid gap-2 sm:flex sm:justify-end" : "grid"}>
-          {onCancel && <Button variant="outline" disabled={save.isPending} onClick={onCancel}>Cancel</Button>}
+        <div className="grid gap-2 sm:flex sm:justify-end">
+          <Button variant="outline" disabled={save.isPending} onClick={onCancel}>Cancel</Button>
           <Button type="submit" disabled={save.isPending}>{submitLabel}</Button>
         </div>
         {saveError && (
@@ -297,6 +298,10 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
 export function Workspace({ session }: { session: Session }) {
   const [period, setPeriod] = useState<ReportingPeriod>();
   const [historyId, setHistoryId] = useState<string>();
+  const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const recordButton = useRef<HTMLButtonElement>(null);
+  const openAccountButton = useRef<HTMLButtonElement>(null);
   const queryKey = [...accountsQueryKey, session.user.id];
   const accounts = useQuery({
     queryKey: [...queryKey, "overview", period],
@@ -304,6 +309,11 @@ export function Workspace({ session }: { session: Session }) {
     placeholderData: keepPreviousData,
     retry: (failureCount, error) => !isAccessError(error) && failureCount < 1,
   });
+  const canRecordTransaction = Boolean(accounts.data?.accounts.length);
+
+  useEffect(() => {
+    if (!canRecordTransaction) setShowTransactionForm(false);
+  }, [canRecordTransaction]);
 
   if (accounts.isPending) {
     return <p role="status" className="text-sm text-[#495e55]">Loading your financial accounts…</p>;
@@ -339,13 +349,27 @@ export function Workspace({ session }: { session: Session }) {
   const { summary, accounts: ownedAccounts } = accounts.data;
   const selectedAccount = ownedAccounts.find(({ id }) => id === historyId);
   const token = session.access_token;
+  const transactionFormVisible = canRecordTransaction && showTransactionForm;
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Account overview</h1>
-        {ownedAccounts.length > 0 && (
-          <Button onClick={() => document.getElementById("record-transaction-heading")?.focus()}>Record a transaction</Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canRecordTransaction && (
+            <Button ref={recordButton} aria-expanded={transactionFormVisible}
+              aria-controls={transactionFormVisible ? "record-transaction-form" : undefined}
+              onClick={() => {
+                if (transactionFormVisible) document.getElementById("record-transaction-heading")?.focus();
+                else setShowTransactionForm(true);
+              }}>Record a transaction</Button>
+          )}
+          <Button ref={openAccountButton} variant={canRecordTransaction ? "outline" : "default"}
+            aria-expanded={showAccountForm} aria-controls={showAccountForm ? "open-account-form" : undefined}
+            onClick={() => {
+              if (showAccountForm) document.getElementById("open-account-heading")?.focus();
+              else setShowAccountForm(true);
+            }}>Open a financial account</Button>
+        </div>
       </div>
       <section className="mb-6 grid gap-4" aria-label="Financial summary">
         <ReportingPeriodForm period={period} onChange={setPeriod} />
@@ -370,7 +394,7 @@ export function Workspace({ session }: { session: Session }) {
           ))}
         </dl>
       </section>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className={`grid items-start gap-6${transactionFormVisible || showAccountForm ? " lg:grid-cols-[minmax(0,1fr)_22rem]" : ""}`}>
         <div className="grid min-w-0 gap-6">
           <AccountList accounts={ownedAccounts} token={token} queryKey={queryKey} historyId={historyId} onHistory={(id) => {
             if (id === historyId) {
@@ -389,10 +413,19 @@ export function Workspace({ session }: { session: Session }) {
             />
           )}
         </div>
-        <div className="grid min-w-0 gap-6">
-          {ownedAccounts.length > 0 && <TransactionForm accounts={ownedAccounts} token={token} queryKey={queryKey} />}
-          <AccountForm token={token} queryKey={queryKey} />
-        </div>
+        {(transactionFormVisible || showAccountForm) && (
+          <div className="grid min-w-0 gap-6">
+            {transactionFormVisible && <TransactionForm accounts={ownedAccounts} token={token} queryKey={queryKey}
+              onCancel={() => {
+                setShowTransactionForm(false);
+                recordButton.current?.focus();
+              }} />}
+            {showAccountForm && <AccountForm token={token} queryKey={queryKey} onCancel={() => {
+              setShowAccountForm(false);
+              openAccountButton.current?.focus();
+            }} />}
+          </div>
+        )}
       </div>
     </>
   );

@@ -31,7 +31,7 @@ type TransactionFormProps = {
   token: string;
   queryKey: readonly string[];
 } & (
-  | { transaction?: undefined; onCancel?: never; onCorrected?: never }
+  | { transaction?: undefined; onCancel: () => void; onCorrected?: never }
   | { transaction: Transaction; onCancel: () => void; onCorrected: (saved: Transaction) => void }
 );
 
@@ -70,8 +70,8 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
   const type = watch("type");
   const editing = Boolean(transaction);
   useEffect(() => {
-    if (editing) setFocus("accountId");
-  }, [editing, setFocus]);
+    setFocus("accountId");
+  }, [setFocus]);
 
   useEffect(() => {
     if (editing || dateChanged.current || dateInput.current?.value !== automaticDate.current) return;
@@ -115,7 +115,7 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
     : (save.isPending ? "Recording transaction…" : "Record transaction");
 
   return (
-    <section aria-labelledby={headingId} className={editing
+    <section id={editing ? undefined : "record-transaction-form"} aria-labelledby={headingId} className={editing
       ? "mt-4 border-t border-[#e0e8e2] pt-4"
       : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-5 shadow-sm sm:p-6"}
     >
@@ -170,8 +170,8 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
           <FormField label="Description (optional)" error={errors.description?.message}>
             {(attributes) => <textarea {...attributes} rows={2} {...register("description")} />}
           </FormField>
-          <div className={editing ? "grid gap-2 sm:flex sm:justify-end" : "grid"}>
-            {onCancel && <Button variant="outline" onClick={onCancel}>Cancel</Button>}
+          <div className="grid gap-2 sm:flex sm:justify-end">
+            <Button variant="outline" onClick={onCancel}>Cancel</Button>
             <Button type="submit">{submitLabel}</Button>
           </div>
         </fieldset>
