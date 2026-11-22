@@ -3,12 +3,13 @@ import type { TransferHistoryEntry } from "@finscope/contracts/transfers";
 import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { retainDeletedActivity } from "../audit/activity-deletions.ts";
-import { assertSavedBuysFunded } from "../etf-trades/cash.ts";
+import { assertSavedTradesFunded } from "../etf-trades/cash.ts";
 import { etfTrades } from "../etf-trades/table.ts";
 import type { TransactionWriteResult } from "../transactions/routes.ts";
 import { transactions } from "../transactions/table.ts";
 import { transferColumns, transfers } from "../transfers/table.ts";
 import { lockOwnerActivity } from "./activity-lock.ts";
+import { transactionCashMovement, transferCashMovement } from "./cash-movements.ts";
 import type { FinancialAccountRepository } from "./routes.ts";
 import { summarizeFinancialAccounts } from "./summary.ts";
 import { accounts } from "./table.ts";
@@ -65,7 +66,7 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
         : await write.insert(transactions).values(values).returning(transactionColumns);
       const affectedAccounts = [input.accountId];
       if (existing) affectedAccounts.push(existing.accountId);
-      await assertSavedBuysFunded(write, ownerUserId, affectedAccounts);
+      await assertSavedTradesFunded(write, ownerUserId, affectedAccounts);
       return { status: "saved", transaction };
     }, { isolationLevel: "read committed" });
   }
@@ -76,8 +77,7 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
       // Keep the outer account ID qualified in the lateral subquery's select list.
       const transferActivity = db.select({
         earliestDate: sql<string | null>`min(${transfers.date})`.as("earliest_date"),
-        net: sql<string>`coalesce(sum(case when ${transfers.destinationAccountId} = "financial_accounts"."id"
-          then ${transfers.amount} else -${transfers.amount} end), 0)`.as("net"),
+        net: sql<string>`coalesce(sum(${transferCashMovement(sql`"financial_accounts"."id"`)}), 0)`.as("net"),
       }).from(transfers).where(linkedTransfers(accounts.ownerUserId, accounts.id)).as("transfer_activity");
       const tradeActivity = db.select({
         earliestDate: sql<string | null>`min(${etfTrades.date})`.as("earliest_trade_date"),
@@ -88,7 +88,7 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
       const rows = await db.select({
         ...publicColumns,
         earliestActivityDate: sql<string | null>`least(min(${transactions.date}), ${transferActivity.earliestDate}, ${tradeActivity.earliestDate})::text`,
-        net: sql<string>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else -${transactions.amount} end), 0) + ${transferActivity.net} + ${tradeActivity.net}`,
+        net: sql<string>`coalesce(sum(${transactionCashMovement}), 0) + ${transferActivity.net} + ${tradeActivity.net}`,
         income: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'income' and ${duringPeriod}), 0)`,
         expenses: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'expense' and ${duringPeriod}), 0)`,
       }).from(accounts).leftJoin(transactions, and(
@@ -134,7 +134,7 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
           .where(and(eq(transactions.ownerUserId, ownerUserId), eq(transactions.id, transactionId))).returning();
         if (!removed) return "not_found";
 
-        await assertSavedBuysFunded(write, ownerUserId, [removed.accountId]);
+        await assertSavedTradesFunded(write, ownerUserId, [removed.accountId]);
         await retainDeletedActivity(write, "transaction", removed);
         return "deleted";
       }, { isolationLevel: "read committed" });
@@ -181,7 +181,7 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
           .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, accountId)))
           .returning(publicColumns);
         if (!row) return { status: "not_found" };
-        await assertSavedBuysFunded(write, ownerUserId, [accountId]);
+        await assertSavedTradesFunded(write, ownerUserId, [accountId]);
         return { status: "saved", account: { ...row, currency: "SGD" } };
       }, { isolationLevel: "read committed" });
     },

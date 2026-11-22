@@ -4,7 +4,7 @@ import { calendarDateSchema } from "@finscope/contracts/calendar-date";
 
 const tradeDate = calendarDateSchema("Enter a valid trade date.", "Enter a trade date in year 1 or later.");
 const positiveDecimal = /^(?=.*[1-9])[0-9]{1,12}(?:\.[0-9]{1,8})?$/;
-const tradeMoney = z.string().regex(/^-?(?:0|[1-9][0-9]*)\.[0-9]{2,16}$/);
+export const preciseSgdAmount = z.string().regex(/^-?(?:0|[1-9][0-9]*)\.[0-9]{2,16}$/);
 const units = z.string().regex(/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/);
 const ticker = z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9._/-]{0,23}$/, "Enter an ETF ticker.");
 const exchange = z.string().trim().toUpperCase().regex(/^[A-Z0-9._-]{0,20}$/, "Enter a valid exchange code.");
@@ -37,28 +37,28 @@ const etfTrade = etfTradeInput.extend({
   ...security,
   id: z.uuid(),
   quantity: units,
-  executionPrice: tradeMoney,
-  fee: tradeMoney,
+  executionPrice: preciseSgdAmount,
+  fee: preciseSgdAmount,
   purpose,
   strategy,
   tags,
   notes,
-  grossAmount: tradeMoney,
-  cashMovement: tradeMoney,
-  realisedPnl: tradeMoney.nullable(),
+  grossAmount: preciseSgdAmount,
+  cashMovement: preciseSgdAmount,
+  realisedPnl: preciseSgdAmount.nullable(),
   canChangeFinancialDetails: z.boolean(),
 });
 
 const etfHolding = z.strictObject({
   ...security,
   units,
-  costBasis: tradeMoney,
-  averageCost: tradeMoney.nullable(),
-  fees: tradeMoney,
-  realisedPnl: tradeMoney,
+  costBasis: preciseSgdAmount,
+  averageCost: preciseSgdAmount.nullable(),
+  fees: preciseSgdAmount,
+  realisedPnl: preciseSgdAmount,
   valuation: z.enum(["awaiting_price", "closed"]),
-  marketValue: tradeMoney.nullable(),
-  unrealisedPnl: tradeMoney.nullable(),
+  marketValue: preciseSgdAmount.nullable(),
+  unrealisedPnl: preciseSgdAmount.nullable(),
 });
 
 const fieldErrors = z.partialRecord(etfTradeInput.keyof(), z.string());
@@ -87,7 +87,7 @@ export const etfTradeResponses = {
     200: z.strictObject({
       currency: z.literal("SGD"),
       valuation: z.enum(["complete", "partial"]),
-      knownSubtotal: tradeMoney,
+      knownSubtotal: preciseSgdAmount,
       unpricedHoldings: z.number().int().nonnegative(),
     }),
   },

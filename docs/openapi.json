@@ -98,7 +98,7 @@
             "$ref": "#/components/responses/AuthUnavailable"
           }
         },
-        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances, all recorded transactions, outgoing and incoming cash transfers, and brokerage trade cash movements. Income, expenses, and net cashflow use the inclusive reporting period and exclude cash transfers and ETF trades. Without dates, totals use the current calendar month in Asia/Singapore.",
+        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances, all recorded transactions, outgoing and incoming cash transfers, and brokerage trade cash movements. Balances include up to 16 decimal places when brokerage trades contribute fractions of a cent. Income, expenses, and net cashflow use the inclusive reporting period and exclude cash transfers and ETF trades. Without dates, totals use the current calendar month in Asia/Singapore.",
         "parameters": [
           {
             "name": "view",
@@ -741,7 +741,7 @@
     "/etf-trades": {
       "post": {
         "summary": "Record an SGD ETF buy or sell",
-        "description": "Trades are ordered by date, then entry order. Same-date everyday transactions and cash transfers are included before trade funding is checked. A backdated trade is rejected if it would leave any buy unfunded or any sale short of units.",
+        "description": "Trades are ordered by date, then entry order. Same-date everyday transactions and cash transfers are included before trade funding is checked. Brokerage cash must cover purchases and any sale fees that exceed gross proceeds. A backdated trade is rejected if it would leave any cash outflow from a trade unfunded or any sale short of units.",
         "security": [
           {
             "supabaseAccessToken": []
@@ -816,7 +816,7 @@
     "/etf-trades/{tradeId}": {
       "patch": {
         "summary": "Update an ETF trade",
-        "description": "Investment context can be edited on any trade. Financial edits are available on the latest trade in the account and must keep it last. The brokerage account, ticker and exchange are fixed after recording.",
+        "description": "Investment context can be edited on any trade. Financial edits are available on the latest trade in the account and must keep it last. The brokerage account, ticker and exchange are fixed after recording. Brokerage cash must cover purchases and any sale fees that exceed gross proceeds.",
         "security": [
           {
             "supabaseAccessToken": []
@@ -1187,7 +1187,7 @@
               },
               "balance": {
                 "type": "string",
-                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
               },
               "income": {
                 "type": "string",
@@ -1233,7 +1233,7 @@
               },
               "balance": {
                 "type": "string",
-                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
               },
               "income": {
                 "type": "string",
@@ -1362,8 +1362,8 @@
           },
           "balance": {
             "type": "string",
-            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$",
-            "description": "Opening balance plus all recorded income minus all recorded expenses."
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$",
+            "description": "Opening balance plus signed cash movements from everyday transactions, cash transfers and brokerage trades."
           },
           "earliestActivityDate": {
             "type": "string",
@@ -2154,7 +2154,8 @@
           },
           "knownSubtotal": {
             "type": "string",
-            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$",
+            "description": "Recorded cash in SGD with up to 16 decimal places."
           },
           "unpricedHoldings": {
             "type": "integer",
@@ -2453,7 +2454,7 @@
         }
       },
       "TradeFundingConflict": {
-        "description": "This cash activity would leave a recorded ETF purchase without sufficient brokerage cash.",
+        "description": "This cash activity would leave a recorded ETF purchase or the part of a sale fee that exceeds gross proceeds without sufficient brokerage cash.",
         "content": {
           "application/json": {
             "schema": {

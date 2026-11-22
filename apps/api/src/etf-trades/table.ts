@@ -1,3 +1,4 @@
+import { asc } from "drizzle-orm";
 import { bigint, date, numeric, pgSchema, text, uuid } from "drizzle-orm/pg-core";
 
 export const etfTrades = pgSchema("finscope_private").table("etf_trades", {
@@ -21,3 +22,7 @@ export const etfTrades = pgSchema("finscope_private").table("etf_trades", {
   costBasisChange: numeric("cost_basis_change").notNull(),
   realisedPnl: numeric("realised_pnl"),
 });
+
+export function tradeChronology(direction = asc) {
+  return [direction(etfTrades.date), direction(etfTrades.entryOrder)];
+}

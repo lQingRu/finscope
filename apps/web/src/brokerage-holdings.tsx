@@ -6,7 +6,7 @@ import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 import { deleteEtfTrade, EtfTradeApiError, getBrokerageHoldings } from "./etf-trade-api";
 import { EtfTradeForm } from "./etf-trade-form";
-import { formatDate, formatSgd, formatTradeSgd } from "./financial-format";
+import { formatDate, formatSgd, formatPreciseSgd } from "./financial-format";
 
 type HoldingProps = {
   account: LabeledAccount;
@@ -52,12 +52,12 @@ function TradeHistoryEntry({ account, token, queryKey, trade, onDeleted }: Holdi
   const title = trade.type === "buy" ? "Buy" : "Sell";
   const metrics: Array<[string, string]> = [
     ["Quantity", trade.quantity],
-    ["Execution price", formatTradeSgd(trade.executionPrice)],
-    ["Gross amount", formatTradeSgd(trade.grossAmount)],
+    ["Execution price", formatPreciseSgd(trade.executionPrice)],
+    ["Gross amount", formatPreciseSgd(trade.grossAmount)],
     ["Fee", formatSgd(trade.fee)],
-    ["Brokerage cash movement", formatTradeSgd(trade.cashMovement)],
+    ["Brokerage cash movement", formatPreciseSgd(trade.cashMovement)],
   ];
-  if (trade.realisedPnl !== null) metrics.push(["Realised P&L", formatTradeSgd(trade.realisedPnl)]);
+  if (trade.realisedPnl !== null) metrics.push(["Realised P&L", formatPreciseSgd(trade.realisedPnl)]);
 
   function finishEditing() {
     setEditing(false);
@@ -151,12 +151,12 @@ export function BrokerageHoldings({ account, token, queryKey, onClose }: Holding
             </header>
             <Metrics entries={[
               ["Units", holding.units],
-              ["Remaining cost basis", formatTradeSgd(holding.costBasis)],
-              ["Average cost per unit", holding.averageCost === null ? "—" : formatTradeSgd(holding.averageCost)],
+              ["Remaining cost basis", formatPreciseSgd(holding.costBasis)],
+              ["Average cost per unit", holding.averageCost === null ? "—" : formatPreciseSgd(holding.averageCost)],
               ["Total fees", formatSgd(holding.fees)],
-              ["Realised P&L", formatTradeSgd(holding.realisedPnl)],
-              ["Market value", holding.marketValue === null ? "—" : formatTradeSgd(holding.marketValue)],
-              ["Unrealised P&L", holding.unrealisedPnl === null ? "—" : formatTradeSgd(holding.unrealisedPnl)],
+              ["Realised P&L", formatPreciseSgd(holding.realisedPnl)],
+              ["Market value", holding.marketValue === null ? "—" : formatPreciseSgd(holding.marketValue)],
+              ["Unrealised P&L", holding.unrealisedPnl === null ? "—" : formatPreciseSgd(holding.unrealisedPnl)],
             ]} />
             <details className="mt-4 border-t border-[#e0e8e2] pt-3">
               <summary className="min-h-9 cursor-pointer text-sm font-semibold">Trades and cash movements</summary>

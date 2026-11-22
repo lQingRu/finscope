@@ -1,4 +1,4 @@
-import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
+import { preciseSgdAmount, tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { z } from "zod";
 import { calendarDateSchema } from "@finscope/contracts/calendar-date";
@@ -54,14 +54,14 @@ const financialAccount = accountDetails.extend({
   openingBalance: sgdAmount,
 });
 
-const accountWithBalance = financialAccount.extend({ balance: sgdAmount, earliestActivityDate: openingDateSchema.nullable() });
+const accountWithBalance = financialAccount.extend({ balance: preciseSgdAmount, earliestActivityDate: openingDateSchema.nullable() });
 const reportingDate = calendarDateSchema(
   "Enter a valid reporting date.",
   "Enter a reporting date in year 1 or later.",
 );
 const summary = z.strictObject({
   currency: z.literal("SGD"),
-  balance: sgdAmount,
+  balance: preciseSgdAmount,
   income: sgdAmount,
   expenses: sgdAmount,
 });

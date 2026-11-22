@@ -14,7 +14,7 @@ import { getPortfolioValuation } from "./etf-trade-api";
 import { EtfTradeForm } from "./etf-trade-form";
 import { Button } from "./components/ui/button";
 
-import { formatDate, formatSgd } from "./financial-format";
+import { formatDate, formatSgd, formatPreciseSgd } from "./financial-format";
 import { FormField, inputStyle } from "./form-field";
 import { TransactionForm } from "./transaction-form";
 import { TransactionHistory } from "./transaction-history";
@@ -73,7 +73,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory, holdingsId
           <p className="mt-1 text-sm text-[#495e55]">Opening balance {formatSgd(account.openingBalance)}</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 sm:justify-end">
-          <span className="max-w-full break-words font-semibold tabular-nums">{formatSgd(account.balance)}</span>
+          <span className="max-w-full break-words font-semibold tabular-nums">{formatPreciseSgd(account.balance)}</span>
           <Button id={`history-${account.id}`} variant="outline" aria-label={`View history for ${account.label}`}
             aria-expanded={historyId === account.id}
             aria-controls={historyId === account.id ? "account-transaction-history" : undefined}
@@ -447,7 +447,7 @@ export function Workspace({ session }: { session: Session }) {
               ? "min-w-0 rounded-xl bg-[#17382f] p-4 text-white"
               : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-4"}>
               <dt className={index === 0 ? "text-sm text-[#d4e9df]" : "text-sm text-[#495e55]"}>{label}</dt>
-              <dd className="mt-2 text-lg font-semibold break-words tabular-nums">{formatSgd(amount)}</dd>
+              <dd className="mt-2 text-lg font-semibold break-words tabular-nums">{index === 0 ? formatPreciseSgd(amount) : formatSgd(amount)}</dd>
             </div>
           ))}
         </dl>
@@ -458,7 +458,7 @@ export function Workspace({ session }: { session: Session }) {
             {portfolio.isError && <p role="alert" className="mt-1 text-sm text-[#8f3023]">Portfolio valuation unavailable.</p>}
             {portfolio.data && (
               <>
-                <p className="mt-1 break-words text-lg font-semibold tabular-nums">{formatSgd(portfolio.data.knownSubtotal)}</p>
+                <p className="mt-1 break-words text-lg font-semibold tabular-nums">{formatPreciseSgd(portfolio.data.knownSubtotal)}</p>
                 {portfolio.data.valuation === "partial" && <p className="mt-1 text-sm text-[#495e55]">
                   Partial valuation · {portfolio.data.unpricedHoldings} {portfolio.data.unpricedHoldings === 1
                     ? "holding awaiting a price" : "holdings awaiting prices"}

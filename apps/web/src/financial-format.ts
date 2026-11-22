@@ -27,6 +27,6 @@ const tradeAmountFormat = new Intl.NumberFormat("en-SG", {
   maximumFractionDigits: 16,
 });
 
-export function formatTradeSgd(amount: string) {
+export function formatPreciseSgd(amount: string) {
   return tradeAmountFormat.format(amount as `${number}`);
 }

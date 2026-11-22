@@ -1,13 +1,14 @@
 import { tradeBeforeOpeningMessage } from "@finscope/contracts/etf-trades";
 import type { BrokerageHoldings, EtfTrade, EtfTradeConflict, EtfTradeInput, PortfolioValuation } from "@finscope/contracts/etf-trades";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { retainDeletedActivity } from "../audit/activity-deletions.ts";
 import { lockOwnerActivity } from "../financial-accounts/activity-lock.ts";
 import { accounts } from "../financial-accounts/table.ts";
-import { TradeDecimal, calculateTradeAmounts, tradeMoney } from "./accounting.ts";
-import { readCashEntries, readKnownPortfolioValue, validateTradeFunding } from "./cash.ts";
-import { etfTrades } from "./table.ts";
+import { SgdDecimal, formatSgd } from "../sgd.ts";
+import { calculateTradeAmounts, summarizeHolding, validateTradeFunding } from "./accounting.ts";
+import { readCashEntries, readKnownPortfolioValue } from "./cash.ts";
+import { etfTrades, tradeChronology } from "./table.ts";
 
 type TradeRow = typeof etfTrades.$inferSelect;
 
@@ -16,11 +17,11 @@ function presentTrade(row: TradeRow, latest: boolean): EtfTrade {
     grossAmount, cashMovement, realisedPnl } = row;
   return {
     id, accountId, ticker, exchange, currency: "SGD", type, date,
-    quantity: new TradeDecimal(quantity).toFixed(),
-    executionPrice: tradeMoney(executionPrice), fee: tradeMoney(fee),
+    quantity: new SgdDecimal(quantity).toFixed(),
+    executionPrice: formatSgd(executionPrice), fee: formatSgd(fee),
     purpose, strategy, tags, notes,
-    grossAmount: tradeMoney(grossAmount), cashMovement: tradeMoney(cashMovement),
-    realisedPnl: realisedPnl === null ? null : tradeMoney(realisedPnl),
+    grossAmount: formatSgd(grossAmount), cashMovement: formatSgd(cashMovement),
+    realisedPnl: realisedPnl === null ? null : formatSgd(realisedPnl),
     canChangeFinancialDetails: latest,
   };
 }
@@ -63,14 +64,14 @@ const historical = {
 
 function orderedTrades(db: Pick<NodePgDatabase, "select">, ownerUserId: string, accountId: string) {
   return db.select().from(etfTrades).where(tradeScope(ownerUserId, accountId))
-    .orderBy(asc(etfTrades.date), asc(etfTrades.entryOrder));
+    .orderBy(...tradeChronology());
 }
 
 function changesFinancialDetails(saved: TradeRow, input: EtfTradeInput) {
   return saved.type !== input.type || saved.date !== input.date
-    || !new TradeDecimal(saved.quantity).eq(input.quantity)
-    || !new TradeDecimal(saved.executionPrice).eq(input.executionPrice)
-    || !new TradeDecimal(saved.fee).eq(input.fee);
+    || !new SgdDecimal(saved.quantity).eq(input.quantity)
+    || !new SgdDecimal(saved.executionPrice).eq(input.executionPrice)
+    || !new SgdDecimal(saved.fee).eq(input.fee);
 }
 
 export function createEtfTradeRepository(db: NodePgDatabase): EtfTradeRepository {
@@ -167,19 +168,9 @@ export function createEtfTradeRepository(db: NodePgDatabase): EtfTradeRepository
         const positions = await readPositions(snapshot, ownerUserId, accountId);
         const rows = await snapshot.select().from(etfTrades)
           .where(tradeScope(ownerUserId, accountId))
-          .orderBy(desc(etfTrades.date), desc(etfTrades.entryOrder));
+          .orderBy(...tradeChronology(desc));
         return {
-          holdings: positions.map(({ ticker, exchange, units, cost, fees, realised }) => {
-            const amount = new TradeDecimal(units);
-            const open = amount.gt(0);
-            return {
-              ticker, exchange, currency: "SGD", units: amount.toFixed(), costBasis: tradeMoney(cost),
-              averageCost: open ? tradeMoney(new TradeDecimal(cost).dividedBy(amount).toDecimalPlaces(16)) : null,
-              fees: tradeMoney(fees), realisedPnl: tradeMoney(realised),
-              valuation: open ? "awaiting_price" : "closed",
-              marketValue: open ? null : "0.00", unrealisedPnl: open ? null : "0.00",
-            };
-          }),
+          holdings: positions.map(summarizeHolding),
           trades: rows.map((row, index) => presentTrade(row, index === 0)),
         };
       }, { isolationLevel: "repeatable read", accessMode: "read only" });
@@ -187,7 +178,7 @@ export function createEtfTradeRepository(db: NodePgDatabase): EtfTradeRepository
     async readPortfolio(ownerUserId) {
       return db.transaction(async (snapshot) => {
         const positions = await readPositions(snapshot, ownerUserId);
-        const unpricedHoldings = positions.filter(({ units }) => new TradeDecimal(units).gt(0)).length;
+        const unpricedHoldings = positions.filter(({ units }) => new SgdDecimal(units).gt(0)).length;
         const knownSubtotal = await readKnownPortfolioValue(snapshot, ownerUserId);
         return { currency: "SGD", valuation: unpricedHoldings ? "partial" : "complete", knownSubtotal, unpricedHoldings };
       }, { isolationLevel: "repeatable read", accessMode: "read only" });

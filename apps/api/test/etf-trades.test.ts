@@ -277,6 +277,42 @@ test("account, transfer, and everyday activity changes preserve cash funding of 
   assert.match(openingAfterTrade.json().openingDateError, /earliest recorded entry/);
 });
 
+test("sales that consume cash require funding while sales that add cash remain available", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const accountId = await workspace.openAccount({ openingBalance: "502" });
+  await workspace.trade(accountId);
+  const sale = { ...tradeDetails, accountId, type: "sell", date: "2026-11-05", quantity: "1", executionPrice: "1.50" };
+  const before = await workspace.holdings(accountId);
+
+  const unfunded = await workspace.request("POST", "/etf-trades", sale);
+  assert.equal(unfunded.statusCode, 409, unfunded.body);
+  assert.equal(unfunded.json().status, "insufficient_cash");
+  assert.equal(unfunded.json().shortfall, "0.50");
+  assert.match(unfunded.json().message, /sale.*fee/i);
+  assert.deepEqual(await workspace.holdings(accountId), before);
+
+  const bank = await workspace.openAccount({ type: "bank" });
+  const funding = await workspace.request("POST", "/transfers", {
+    sourceAccountId: bank, destinationAccountId: accountId, date: sale.date, amount: "0.50",
+  });
+  assert.equal(funding.statusCode, 201, funding.body);
+  const saved = await workspace.trade(accountId, sale);
+  assert.equal(saved.cashMovement, "-0.50");
+  const removal = await workspace.request("DELETE", `/transfers/${funding.json().id}`);
+  assert.equal(removal.statusCode, 409, removal.body);
+  assert.equal(removal.json().affectedTradeId, saved.id);
+  assert.equal(removal.json().shortfall, "0.50");
+
+  const expense = await workspace.request("POST", "/transactions", {
+    accountId, type: "expense", date: "2026-11-06", amount: "3", category: "Other Expense",
+  });
+  assert.equal(expense.statusCode, 201, expense.body);
+  await workspace.trade(accountId, { ...sale, date: "2026-11-06", executionPrice: "3" });
+  assert.equal((await workspace.overview()).accounts.find(({ id }: { id: string }) => id === accountId).balance, "-2.00");
+});
+
 test("ordinary backdated trades recalculate later sales while retaining entered details and exact fractional amounts", {
   skip: !databaseUrl,
 }, async ({ onTestFinished }) => {
@@ -317,4 +353,32 @@ test("ordinary backdated trades recalculate later sales while retaining entered 
   assert.equal(closed.units, "0");
   assert.equal(closed.costBasis, "0.00");
   assert.equal(closed.valuation, "closed");
+});
+
+test("brokerage and portfolio cash balances retain the full precision of fractional trades", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const accountId = await workspace.openAccount();
+  const bank = await workspace.openAccount({ type: "bank", openingBalance: "4.25" });
+  const trade = await workspace.trade(accountId, {
+    quantity: "0.00000001", executionPrice: "0.00000001", fee: "0",
+  });
+  assert.equal(trade.cashMovement, "-0.0000000000000001");
+
+  const { summary, accounts } = await workspace.overview();
+  assert.equal(accounts.find(({ id }: { id: string }) => id === accountId).balance, "1999.9999999999999999");
+  assert.equal(accounts.find(({ id }: { id: string }) => id === bank).balance, "4.25");
+  assert.deepEqual(
+    { balance: summary.balance, income: summary.income, expenses: summary.expenses, netCashflow: summary.netCashflow },
+    { balance: "2004.2499999999999999", income: "0.00", expenses: "0.00", netCashflow: "0.00" },
+  );
+
+  const list = await workspace.request("GET", "/financial-accounts");
+  assert.equal(list.statusCode, 200, list.body);
+  assert.equal(list.json().summary.balance, "2004.2499999999999999");
+
+  const portfolio = await workspace.request("GET", "/portfolio");
+  assert.equal(portfolio.statusCode, 200, portfolio.body);
+  assert.equal(portfolio.json().knownSubtotal, "2004.2499999999999999");
 });
