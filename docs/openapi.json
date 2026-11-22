@@ -58,7 +58,7 @@
     },
     "/financial-accounts": {
       "get": {
-        "summary": "List the owner's financial accounts and opening balance totals",
+        "summary": "List financial accounts and their SGD totals",
         "security": [
           {
             "supabaseAccessToken": []
@@ -66,11 +66,18 @@
         ],
         "responses": {
           "200": {
-            "description": "Accounts and totals in SGD. Opening balances contribute zero to income and expenses.",
+            "description": "The original account list for requests without parameters, or the reporting overview when requested.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountsResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/FinancialAccountsResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FinancialAccountOverviewResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -90,7 +97,43 @@
           "503": {
             "$ref": "#/components/responses/AuthUnavailable"
           }
-        }
+        },
+        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances and all recorded transactions. Income, expenses, and net cashflow use the inclusive reporting period. Without dates, totals use the current calendar month in Asia/Singapore.",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "description": "Include account balances, earliest activity dates, net cashflow, and reporting period dates.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "overview"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "First day of the reporting period, inclusive. Requires to.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "A valid Gregorian calendar date in year 0001 or later."
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Last day of the reporting period, inclusive. Requires from.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "A valid Gregorian calendar date in year 0001 or later."
+            }
+          }
+        ]
       },
       "post": {
         "summary": "Open a bank or brokerage financial account",
@@ -141,7 +184,7 @@
     "/financial-accounts/{accountId}": {
       "patch": {
         "summary": "Correct a financial account's name, opening date, and opening balance",
-        "description": "Updates the existing account in place. Opening balance corrections contribute zero to income and expenses.",
+        "description": "Updates the existing account in place. Opening balance corrections contribute zero to income and expenses. The opening date must be on or before the earliest recorded entry.",
         "security": [
           {
             "supabaseAccessToken": []
@@ -232,6 +275,225 @@
           },
           "404": {
             "$ref": "#/components/responses/AccountNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/LinkedAccountActivity"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/financial-accounts/{accountId}/transactions": {
+      "get": {
+        "summary": "List an account's transactions",
+        "description": "Filters are optional and combine. Date bounds are inclusive. Rows are sorted by transaction date, then creation time, newest first.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filter by transaction type.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "income",
+                "expense"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Filter by transaction category.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Salary",
+                "Other Income",
+                "Food",
+                "Transport",
+                "Shopping",
+                "Bills",
+                "Other Expense"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Earliest transaction date, inclusive.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "A valid Gregorian calendar date in year 0001 or later."
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Latest transaction date, inclusive.",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "A valid Gregorian calendar date in year 0001 or later."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account's matching transactions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransaction"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/AccountNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/transactions": {
+      "post": {
+        "summary": "Record an income or expense transaction",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The transaction was recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransaction"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TransactionNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/transactions/{transactionId}": {
+      "patch": {
+        "summary": "Correct a recorded transaction",
+        "description": "Replaces the editable fields, including the destination account, while retaining the same transaction ID.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The transaction was corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transaction"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransaction"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TransactionNotFound"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -386,6 +648,72 @@
         ],
         "additionalProperties": false
       },
+      "FinancialAccountOverviewResponse": {
+        "type": "object",
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountWithBalance"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "currency": {
+                "type": "string",
+                "enum": [
+                  "SGD"
+                ]
+              },
+              "balance": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "income": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "expenses": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+              },
+              "netCashflow": {
+                "type": "string",
+                "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$",
+                "description": "Income minus expenses in the reporting period."
+              },
+              "from": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                "description": "A valid Gregorian calendar date in year 0001 or later."
+              },
+              "to": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                "description": "A valid Gregorian calendar date in year 0001 or later."
+              }
+            },
+            "required": [
+              "currency",
+              "balance",
+              "income",
+              "expenses",
+              "netCashflow",
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "accounts",
+          "summary"
+        ],
+        "additionalProperties": false
+      },
       "CorrectFinancialAccount": {
         "type": "object",
         "properties": {
@@ -423,7 +751,341 @@
           },
           "openingDateError": {
             "type": "string",
-            "description": "Field error when the opening date is invalid."
+            "description": "Field error when the opening date is invalid, including the earliest conflicting date when applicable."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "AccountWithBalance": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "bank",
+              "brokerage"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "openingDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "A valid Gregorian calendar date in year 0001 or later."
+          },
+          "openingBalance": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2}$",
+            "description": "Opening balance plus all recorded income minus all recorded expenses."
+          },
+          "earliestActivityDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Earliest recorded entry, or null for an unused account.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "currency",
+          "openingDate",
+          "openingBalance",
+          "id",
+          "balance",
+          "earliestActivityDate"
+        ],
+        "additionalProperties": false
+      },
+      "TransactionInput": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "income",
+              "expense"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])[0-9]{1,12}(?:\\.[0-9]{1,2})?$",
+            "description": "Positive SGD amount with up to twelve whole digits and two decimal places."
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Gregorian calendar date on or after the selected account's opening date. Future dates are allowed."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "Salary",
+              "Other Income",
+              "Food",
+              "Transport",
+              "Shopping",
+              "Bills",
+              "Other Expense"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional free text without null characters. Surrounding whitespace is trimmed."
+          }
+        },
+        "required": [
+          "accountId",
+          "type",
+          "amount",
+          "date",
+          "category"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "income"
+                ]
+              },
+              "category": {
+                "enum": [
+                  "Salary",
+                  "Other Income"
+                ]
+              }
+            }
+          },
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "expense"
+                ]
+              },
+              "category": {
+                "enum": [
+                  "Food",
+                  "Transport",
+                  "Shopping",
+                  "Bills",
+                  "Other Expense"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "Transaction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "income",
+              "expense"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Gregorian calendar date on or after the selected account's opening date. Future dates are allowed."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "Salary",
+              "Other Income",
+              "Food",
+              "Transport",
+              "Shopping",
+              "Bills",
+              "Other Expense"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "type",
+          "amount",
+          "date",
+          "category",
+          "description"
+        ],
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "income"
+                ]
+              },
+              "category": {
+                "enum": [
+                  "Salary",
+                  "Other Income"
+                ]
+              }
+            }
+          },
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "expense"
+                ]
+              },
+              "category": {
+                "enum": [
+                  "Food",
+                  "Transport",
+                  "Shopping",
+                  "Bills",
+                  "Other Expense"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "TransactionHistory": {
+        "type": "object",
+        "properties": {
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            }
+          }
+        },
+        "required": [
+          "transactions"
+        ],
+        "additionalProperties": false
+      },
+      "TransactionValidationError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "invalid_request"
+            ]
+          },
+          "fieldErrors": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "TransactionNotFound": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_found"
+            ]
+          },
+          "fieldErrors": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "LinkedAccountActivity": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "linked_activity"
+            ]
           }
         },
         "required": [
@@ -571,6 +1233,36 @@
                 "status"
               ],
               "additionalProperties": false
+            }
+          }
+        }
+      },
+      "InvalidTransaction": {
+        "description": "The transaction is invalid. Field errors are supplied where available.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TransactionValidationError"
+            }
+          }
+        }
+      },
+      "TransactionNotFound": {
+        "description": "The transaction or destination account is unavailable in the authorised workspace.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TransactionNotFound"
+            }
+          }
+        }
+      },
+      "LinkedAccountActivity": {
+        "description": "The account has linked activity and cannot be deleted.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/LinkedAccountActivity"
             }
           }
         }

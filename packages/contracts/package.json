@@ -4,8 +4,10 @@
   "type": "module",
   "exports": {
     "./api-errors": "./api-errors.ts",
+    "./calendar-date": "./calendar-date.ts",
     "./health": "./health.ts",
-    "./financial-accounts": "./financial-accounts.ts"
+    "./financial-accounts": "./financial-accounts.ts",
+    "./transactions": "./transactions.ts"
   },
   "dependencies": {
     "zod": "^4.3.0"
