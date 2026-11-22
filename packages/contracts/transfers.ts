@@ -42,6 +42,10 @@ export const transferResponses = {
 export const transferAccountFields = ["sourceAccountId", "destinationAccountId"] as const;
 export type TransferAccountField = (typeof transferAccountFields)[number];
 
+export function minimumTransferDate(sourceOpeningDate = "", destinationOpeningDate = "") {
+  return sourceOpeningDate > destinationOpeningDate ? sourceOpeningDate : destinationOpeningDate;
+}
+
 export function transferBeforeOpeningMessage(openingDate: string) {
   return `Enter a date on or after both accounts’ opening dates (earliest allowed date: ${openingDate}).`;
 }

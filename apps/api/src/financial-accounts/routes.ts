@@ -27,7 +27,7 @@ type AccountCorrection =
   | { status: "not_found" }
   | { status: "after_activity"; activityDate: string };
 
-export type FinancialAccountRepository = TransactionRepository & TransferRepository & {
+export type FinancialAccountRepository = TransactionRepository & {
   list: (ownerUserId: string, period: ReportingPeriod) => Promise<FinancialAccountOverview>;
   open: (ownerUserId: string, account: OpenFinancialAccount) => Promise<FinancialAccount>;
   delete: (ownerUserId: string, accountId: string) => Promise<"deleted" | "not_found" | "linked_activity">;
@@ -37,6 +37,7 @@ export type FinancialAccountRepository = TransactionRepository & TransferReposit
 export type FinancialAccountsOptions = {
   authorize: AuthorizeOwner;
   repository: FinancialAccountRepository;
+  transferRepository: TransferRepository;
 };
 
 const accountParams = z.object({ accountId: z.uuid() });
@@ -51,7 +52,7 @@ function invalidAccountInput(error: z.ZodError) {
 
 export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions> = async (
   api,
-  { authorize, repository },
+  { authorize, repository, transferRepository },
 ) => {
   api.decorateRequest("workspaceOwnerId", null);
   api.addHook("onRequest", async (request, reply) => {
@@ -84,7 +85,7 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
   });
 
   registerTransactionRoutes(api, repository);
-  registerTransferRoutes(api, repository);
+  registerTransferRoutes(api, transferRepository);
 
   api.post("/financial-accounts", async (request, reply) => {
     const input = openFinancialAccount.safeParse(request.body);

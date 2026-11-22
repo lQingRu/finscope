@@ -1,4 +1,3 @@
-import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
 import { transactionCategories, transactionHistoryQuery } from "@finscope/contracts/transactions";
 import type { Transaction, TransactionHistoryQuery } from "@finscope/contracts/transactions";
 import type { Transfer } from "@finscope/contracts/transfers";
@@ -8,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { isAccessError } from "./account-api";
+import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 import { formatDate, formatSgd } from "./financial-format";
 import { FormField } from "./form-field";
@@ -23,8 +23,8 @@ const historyFilterForm = z.preprocess(
 type HistoryEditor = { kind: "transaction" | "transfer"; id: string };
 
 export function TransactionHistory({ account, accounts, token, queryKey, onClose }: {
-  account: FinancialAccount;
-  accounts: FinancialAccount[];
+  account: LabeledAccount;
+  accounts: LabeledAccount[];
   token: string;
   queryKey: readonly string[];
   onClose: () => void;
@@ -76,7 +76,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
     if ("accountId" in saved) {
       const destination = accounts.find(({ id }) => id === saved.accountId);
       setNotice(destination && destination.id !== account.id
-        ? `Transaction moved to ${destination.name}.`
+        ? `Transaction moved to ${destination.label}.`
         : "Transaction updated.");
     } else {
       setNotice("Transfer updated.");
@@ -89,7 +89,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id={headingId} ref={heading} tabIndex={-1} className="text-lg font-semibold">Transaction history</h2>
-          <p className="mt-1 break-words text-sm text-[#495e55]">{account.name}</p>
+          <p className="mt-1 break-words text-sm text-[#495e55]">{account.label}</p>
         </div>
         <Button variant="outline" onClick={onClose}>Close history</Button>
       </div>
@@ -168,7 +168,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
             if (isTransfer) {
               const otherAccountId = credit ? entry.sourceAccountId : entry.destinationAccountId;
               const otherAccount = accounts.find(({ id }) => id === otherAccountId);
-              label = otherAccount ? `Transfer ${credit ? "from" : "to"} ${otherAccount.name}` : "Cash transfer";
+              label = otherAccount ? `Transfer ${credit ? "from" : "to"} ${otherAccount.label}` : "Cash transfer";
               typeLabel = credit ? "Incoming transfer" : "Outgoing transfer";
             } else {
               label = entry.category;

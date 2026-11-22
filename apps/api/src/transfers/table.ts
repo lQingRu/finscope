@@ -9,3 +9,11 @@ export const transfers = pgSchema("finscope_private").table("transfers", {
   date: date().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const transferColumns = {
+  id: transfers.id,
+  sourceAccountId: transfers.sourceAccountId,
+  destinationAccountId: transfers.destinationAccountId,
+  amount: transfers.amount,
+  date: transfers.date,
+};

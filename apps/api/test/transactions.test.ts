@@ -8,6 +8,7 @@ import { createApi } from "../src/app.ts";
 import { migrateDatabase } from "../src/database.ts";
 import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
 import { createFinancialAccountRepository } from "../src/financial-accounts/repository.ts";
+import { createTransferRepository } from "../src/transfers/repository.ts";
 
 const databaseUrl = process.env.FINSCOPE_TEST_DATABASE_URL;
 const googleSubject = "123456789012345678901";
@@ -27,11 +28,16 @@ async function startWorkspace(onFinish: (cleanup: () => Promise<void>) => void, 
     ownerUserId,
     ownerGoogleSubject: googleSubject,
   }, async () => Response.json({ id: ownerUserId, identities: [{ provider: "google", id: googleSubject }] }));
+  const db = drizzle(pool);
   const app = await createApi({
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
     reportError: assert.fail,
-    accounts: { authorize, repository: createFinancialAccountRepository(drizzle(pool)) },
+    accounts: {
+      authorize,
+      repository: createFinancialAccountRepository(db),
+      transferRepository: createTransferRepository(db),
+    },
   });
   onFinish(() => app.close());
   const claims = { sub: ownerUserId, aud: "authenticated", role: "authenticated", amr: [{ method: "oauth" }] };

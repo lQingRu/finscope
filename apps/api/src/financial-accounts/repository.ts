@@ -1,35 +1,20 @@
 import type { AccountHistory, TransactionInput } from "@finscope/contracts/transactions";
-import { transferAccountFields } from "@finscope/contracts/transfers";
-import type { TransferHistoryEntry, TransferInput } from "@finscope/contracts/transfers";
-import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import type { TransferHistoryEntry } from "@finscope/contracts/transfers";
+import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { date, numeric, pgSchema, text, uuid, varchar } from "drizzle-orm/pg-core";
 import type { TransactionWriteResult } from "../transactions/routes.ts";
 import { transactions } from "../transactions/table.ts";
-import type { TransferWriteResult } from "../transfers/routes.ts";
-import { transfers } from "../transfers/table.ts";
+import { transferColumns, transfers } from "../transfers/table.ts";
+import { lockOwnerActivity } from "./activity-lock.ts";
 import type { FinancialAccountRepository } from "./routes.ts";
 import { summarizeFinancialAccounts } from "./summary.ts";
-
-async function lockOwnerActivity(write: Pick<NodePgDatabase, "execute">, ownerUserId: string) {
-  // Coordinate date checks and deletion across all API processes for this workspace.
-  await write.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ownerUserId}::text, 20261122))`);
-}
+import { accounts } from "./table.ts";
 
 function isForeignKeyViolation(error: unknown): boolean {
   return error instanceof Error && (
     ("code" in error && error.code === "23503") || isForeignKeyViolation(error.cause)
   );
 }
-
-const accounts = pgSchema("finscope_private").table("financial_accounts", {
-  id: uuid().defaultRandom().primaryKey(),
-  ownerUserId: uuid("owner_user_id").notNull(),
-  name: varchar({ length: 100 }).notNull(),
-  type: text({ enum: ["bank", "brokerage"] }).notNull(),
-  openingDate: date("opening_date").notNull(),
-  openingBalance: numeric("opening_balance", { precision: 14, scale: 2 }).notNull(),
-});
 
 const publicColumns = {
   id: accounts.id,
@@ -47,14 +32,6 @@ const transactionColumns = {
   date: transactions.date,
   category: transactions.category,
   description: transactions.description,
-};
-
-const transferColumns = {
-  id: transfers.id,
-  sourceAccountId: transfers.sourceAccountId,
-  destinationAccountId: transfers.destinationAccountId,
-  amount: transfers.amount,
-  date: transfers.date,
 };
 
 function linkedTransfers(ownerUserId: string | typeof accounts.ownerUserId, accountId: string | typeof accounts.id) {
@@ -84,34 +61,6 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
         ? await write.update(transactions).set(values).where(transactionScope).returning(transactionColumns)
         : await write.insert(transactions).values(values).returning(transactionColumns);
       return { status: "saved", transaction };
-    }, { isolationLevel: "read committed" });
-  }
-
-  async function saveTransfer(ownerUserId: string, input: TransferInput, transferId?: string): Promise<TransferWriteResult> {
-    return db.transaction(async (write) => {
-      await lockOwnerActivity(write, ownerUserId);
-      const transferScope = transferId && and(eq(transfers.ownerUserId, ownerUserId), eq(transfers.id, transferId));
-      if (transferScope) {
-        const [existing] = await write.select({ id: transfers.id }).from(transfers).where(transferScope);
-        if (!existing) return { status: "not_found" };
-      }
-
-      // Lock both account rows against opening-date updates from older API versions.
-      const selected = await write.select({ id: accounts.id, openingDate: accounts.openingDate }).from(accounts)
-        .where(and(eq(accounts.ownerUserId, ownerUserId), inArray(accounts.id, [
-          input.sourceAccountId, input.destinationAccountId,
-        ]))).orderBy(asc(accounts.id)).for("share");
-      for (const field of transferAccountFields) {
-        if (!selected.some(({ id }) => id === input[field])) return { status: "missing_account", field };
-      }
-      const [latestOpeningDate] = selected.map(({ openingDate }) => openingDate).sort().reverse();
-      if (input.date < latestOpeningDate) return { status: "before_opening", openingDate: latestOpeningDate };
-
-      const values = { ...input, ownerUserId };
-      const [transfer] = transferScope
-        ? await write.update(transfers).set(values).where(transferScope).returning(transferColumns)
-        : await write.insert(transfers).values(values).returning(transferColumns);
-      return { status: "saved", transfer };
     }, { isolationLevel: "read committed" });
   }
 
@@ -168,8 +117,6 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
     },
     recordTransaction: (ownerUserId, input) => saveTransaction(ownerUserId, input),
     correctTransaction: (ownerUserId, transactionId, input) => saveTransaction(ownerUserId, input, transactionId),
-    recordTransfer: (ownerUserId, input) => saveTransfer(ownerUserId, input),
-    correctTransfer: (ownerUserId, transferId, input) => saveTransfer(ownerUserId, input, transferId),
     async open(ownerUserId, { name, type, openingDate, openingBalance }) {
       const [row] = await db.insert(accounts).values({
         ownerUserId, name, type, openingDate, openingBalance,

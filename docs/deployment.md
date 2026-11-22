@@ -125,7 +125,17 @@ curl --silent --show-error --include "${auth_header[@]}" \
 unset FINSCOPE_ACCESS_TOKEN auth_header
 ```
 
-To roll back an application release, use the prior deployment in each provider's dashboard. Keep the database and applied migrations in place. Confirm API readiness and open the Pages site after the rollback.
+### Roll back or roll forward
+
+Restrict owner access and pause writes during recovery. Keep the database and applied migrations in place. Use the provider dashboards to restore a compatible API and Pages deployment. Before restoring a release that predates cash transfers, confirm that the database has no recorded transfers. Once a transfer exists, use a prior API and Pages release that both support transfers or roll forward with a fix. A pre-transfer API can pass `/health` while omitting recorded transfers from account balances and histories.
+
+Before reopening access, check API readiness and open the Pages site. If there are recorded transfers, use a known transfer and compare with the last known correct figures for the same reporting period:
+
+- Check both account histories for the same amount and date, with an outgoing entry in the source account and an incoming entry in the destination account.
+- Check that the source and destination balances reflect the debit and credit and that the transfer leaves total balance unchanged.
+- Check that income, expenses and net cashflow for the same period exclude the transfer and match the expected amounts.
+
+Keep access restricted if any financial check fails and verify again after a compatible release is deployed.
 
 ## Back up and restore financial data
 

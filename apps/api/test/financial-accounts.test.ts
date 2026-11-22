@@ -54,9 +54,11 @@ test("direct reads and writes reject missing and unverified tokens and another G
     reportError: assert.fail,
     accounts: {
       authorize,
-      repository: {
+      transferRepository: {
         recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
         correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
+      },
+      repository: {
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
@@ -124,6 +126,7 @@ test("an owner can correct an account in place and see the new opening balance a
   const { Pool } = await import("pg");
   const { migrateDatabase } = await import("../src/database.ts");
   const { createFinancialAccountRepository } = await import("../src/financial-accounts/repository.ts");
+  const { createTransferRepository } = await import("../src/transfers/repository.ts");
   const workspaceOwner = randomUUID();
   function sessionHeaders(userId: string) {
     const token = `test.${Buffer.from(JSON.stringify({
@@ -148,12 +151,13 @@ test("an owner can correct an account in place and see the new opening balance a
       ownerGoogleSubject,
     }, async () => Response.json(providerUser(userId, ownerGoogleSubject)));
 
-    const repository = createFinancialAccountRepository(drizzle(pool));
+    const db = drizzle(pool);
+    const repository = createFinancialAccountRepository(db);
     const app = await createApi({
       checkDatabase: async () => {},
       corsOrigin: "https://finscope.pages.dev",
       reportError: assert.fail,
-      accounts: { authorize, repository },
+      accounts: { authorize, repository, transferRepository: createTransferRepository(db) },
     });
     onTestFinished(() => app.close());
     return { app, repository };
@@ -258,9 +262,11 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     reportError: assert.fail,
     accounts: {
       authorize: async () => ({ status: "authorized", ownerUserId }),
-      repository: {
+      transferRepository: {
         recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
         correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
+      },
+      repository: {
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),

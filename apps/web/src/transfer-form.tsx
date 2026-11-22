@@ -1,12 +1,12 @@
 import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
-import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
-import { transferAccountFields, transferBeforeOpeningMessage, transferInput } from "@finscope/contracts/transfers";
+import { minimumTransferDate, transferAccountFields, transferBeforeOpeningMessage, transferInput } from "@finscope/contracts/transfers";
 import type { Transfer, TransferInput } from "@finscope/contracts/transfers";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { isAccessError } from "./account-api";
+import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 import { FormField } from "./form-field";
 import { saveTransfer, TransferApiError } from "./transfer-api";
@@ -21,14 +21,14 @@ function blankTransfer(): TransferInput {
   return { sourceAccountId: "", destinationAccountId: "", amount: "", date: singaporeCalendarDate() };
 }
 
-function minimumTransferDate(accounts: FinancialAccount[], sourceAccountId: string, destinationAccountId: string) {
+function earliestDateForSelection(accounts: LabeledAccount[], sourceAccountId: string, destinationAccountId: string) {
   const source = accounts.find(({ id }) => id === sourceAccountId);
   const destination = accounts.find(({ id }) => id === destinationAccountId);
-  return [source?.openingDate, destination?.openingDate].filter((date) => date !== undefined).sort().pop();
+  return minimumTransferDate(source?.openingDate, destination?.openingDate);
 }
 
 type TransferFormProps = {
-  accounts: FinancialAccount[];
+  accounts: LabeledAccount[];
   token: string;
   queryKey: readonly string[];
   onCancel: () => void;
@@ -54,7 +54,7 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
           context.addIssue({ code: "custom", path: [field], message: "Select an available financial account." });
         }
       }
-      const minimumDate = minimumTransferDate(accounts, sourceAccountId, destinationAccountId);
+      const minimumDate = earliestDateForSelection(accounts, sourceAccountId, destinationAccountId);
       if (minimumDate && date < minimumDate) {
         context.addIssue({ code: "custom", path: ["date"], message: transferBeforeOpeningMessage(minimumDate) });
       }
@@ -62,7 +62,7 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
   });
   const selected = watch(["sourceAccountId", "destinationAccountId"]);
   const choices = { sourceAccountId: selected[0], destinationAccountId: selected[1] };
-  const minimumDate = minimumTransferDate(accounts, ...selected);
+  const minimumDate = earliestDateForSelection(accounts, ...selected);
   const editing = Boolean(transfer);
   useEffect(() => { setFocus("sourceAccountId"); }, [setFocus]);
 
@@ -113,7 +113,7 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
               {(attributes) => (
                 <select {...attributes} required {...register(field)}>
                   <option value="">Select an account</option>
-                  {accounts.map(({ id, name }) => <option key={id} value={id} disabled={id === choices[other]}>{name}</option>)}
+                  {accounts.map(({ id, label }) => <option key={id} value={id} disabled={id === choices[other]}>{label}</option>)}
                 </select>
               )}
             </FormField>
@@ -123,7 +123,7 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
           </FormField>
           <FormField label="Transfer date" error={errors.date?.message}>
             {(attributes) => <input {...attributes} type="date" required
-              min={minimumDate ?? "0001-01-01"} max="9999-12-31" {...register("date")} />}
+              min={minimumDate || "0001-01-01"} max="9999-12-31" {...register("date")} />}
           </FormField>
           <div className="grid gap-2 sm:flex sm:justify-end">
             <Button variant="outline" onClick={onCancel}>Cancel</Button>
