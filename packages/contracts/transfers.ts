@@ -1,3 +1,4 @@
+import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { z } from "zod";
 import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { calendarDateSchema } from "@finscope/contracts/calendar-date";
@@ -25,6 +26,7 @@ const transferFieldErrors = z.object({
 });
 const transferErrors = {
   ...apiErrorResponses,
+  409: tradeFundingConflict,
   400: apiErrorResponses[400].extend({ fieldErrors: transferFieldErrors.optional() }),
   401: z.object({ status: z.literal("unauthenticated") }),
   403: z.object({ status: z.literal("forbidden") }),

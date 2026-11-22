@@ -9,6 +9,9 @@ import { useForm } from "react-hook-form";
 import { AccountApiError, correctAccount, deleteAccount, isAccessError, listAccounts, openAccount } from "./account-api";
 import { accountTypeLabels, labelFinancialAccounts } from "./account-labels";
 import type { LabeledAccount } from "./account-labels";
+import { BrokerageHoldings } from "./brokerage-holdings";
+import { getPortfolioValuation } from "./etf-trade-api";
+import { EtfTradeForm } from "./etf-trade-form";
 import { Button } from "./components/ui/button";
 
 import { formatDate, formatSgd } from "./financial-format";
@@ -24,9 +27,14 @@ export const accountsQueryKey = ["financial-accounts"] as const;
 
 type AccountFormContext = { token: string; queryKey: readonly string[] };
 
-type HistoryControl = { historyId?: string; onHistory: (accountId: string) => void };
+type HistoryControl = {
+  historyId?: string;
+  onHistory: (accountId: string) => void;
+  holdingsId?: string;
+  onHoldings: (accountId: string) => void;
+};
 
-function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { account: LabeledAccount<AccountWithBalance> }) {
+function AccountRow({ account, token, queryKey, historyId, onHistory, holdingsId, onHoldings }: AccountFormContext & HistoryControl & { account: LabeledAccount<AccountWithBalance> }) {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState("");
   const editButton = useRef<HTMLButtonElement>(null);
@@ -71,6 +79,12 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
             aria-controls={historyId === account.id ? "account-transaction-history" : undefined}
             onClick={() => onHistory(account.id)}
           >View history</Button>
+          {account.type === "brokerage" && (
+            <Button id={`holdings-${account.id}`} variant="outline" aria-label={`View holdings for ${account.label}`}
+              aria-expanded={holdingsId === account.id}
+              aria-controls={holdingsId === account.id ? "brokerage-holdings" : undefined}
+              onClick={() => onHoldings(account.id)}>View holdings</Button>
+          )}
           <Button
             ref={editButton}
             variant="outline"
@@ -125,7 +139,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
   );
 }
 
-function AccountList({ accounts, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { accounts: LabeledAccount<AccountWithBalance>[] }) {
+function AccountList({ accounts, token, queryKey, historyId, onHistory, holdingsId, onHoldings }: AccountFormContext & HistoryControl & { accounts: LabeledAccount<AccountWithBalance>[] }) {
   return (
     <section aria-labelledby="accounts-heading">
       <h2 id="accounts-heading" tabIndex={-1} className="mb-3 text-lg font-semibold">Financial accounts</h2>
@@ -136,7 +150,8 @@ function AccountList({ accounts, token, queryKey, historyId, onHistory }: Accoun
       ) : (
         <ul className="divide-y divide-[#e0e8e2] overflow-hidden rounded-xl border border-[#d8e4db] bg-white">
           {accounts.map((account) => (
-            <AccountRow key={account.id} account={account} token={token} queryKey={queryKey} historyId={historyId} onHistory={onHistory} />
+            <AccountRow key={account.id} account={account} token={token} queryKey={queryKey} historyId={historyId} onHistory={onHistory}
+              holdingsId={holdingsId} onHoldings={onHoldings} />
           ))}
         </ul>
       )}
@@ -286,9 +301,11 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
           <p role="alert" className="text-sm text-[#8f3023]">
             {isAccessError(save.error)
               ? "Your session no longer has access. Sign out and try again."
-              : account
-                ? "We couldn’t confirm the changes were saved. Refresh the account list before trying again."
-                : "We couldn’t confirm the account was opened. Refresh the account list before trying again."}
+              : save.error instanceof AccountApiError && save.error.fundingError
+                ? save.error.fundingError
+                : account
+                  ? "We couldn’t confirm the changes were saved. Refresh the account list before trying again."
+                  : "We couldn’t confirm the account was opened. Refresh the account list before trying again."}
           </p>
         )}
         {notice && <p role="status" className="text-sm text-[#286347]">{notice}</p>}
@@ -300,11 +317,15 @@ function AccountForm({ token, queryKey, account, onCancel, onCorrected }: Accoun
 export function Workspace({ session }: { session: Session }) {
   const [period, setPeriod] = useState<ReportingPeriod>();
   const [historyId, setHistoryId] = useState<string>();
+  const [holdingsId, setHoldingsId] = useState<string>();
+  const [showTradeForm, setShowTradeForm] = useState(false);
+  const [tradeNotice, setTradeNotice] = useState("");
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [showTransferForm, setShowTransferForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const recordButton = useRef<HTMLButtonElement>(null);
   const transferButton = useRef<HTMLButtonElement>(null);
+  const tradeButton = useRef<HTMLButtonElement>(null);
   const openAccountButton = useRef<HTMLButtonElement>(null);
   const queryKey = [...accountsQueryKey, session.user.id];
   const accounts = useQuery({
@@ -313,13 +334,21 @@ export function Workspace({ session }: { session: Session }) {
     placeholderData: keepPreviousData,
     retry: (failureCount, error) => !isAccessError(error) && failureCount < 1,
   });
+  const portfolio = useQuery({
+    queryKey: [...queryKey, "portfolio"],
+    queryFn: ({ signal }) => getPortfolioValuation(session.access_token, signal),
+    enabled: accounts.isSuccess,
+    retry: (count, error) => !isAccessError(error) && count < 1,
+  });
+  const canRecordTrade = Boolean(accounts.data?.accounts.some(({ type }) => type === "brokerage"));
   const canRecordTransaction = Boolean(accounts.data?.accounts.length);
   const canRecordTransfer = (accounts.data?.accounts.length ?? 0) >= 2;
 
   useEffect(() => {
     if (!canRecordTransaction) setShowTransactionForm(false);
     if (!canRecordTransfer) setShowTransferForm(false);
-  }, [canRecordTransaction, canRecordTransfer]);
+    if (!canRecordTrade) setShowTradeForm(false);
+  }, [canRecordTransaction, canRecordTransfer, canRecordTrade]);
 
   if (accounts.isPending) {
     return <p role="status" className="text-sm text-[#495e55]">Loading your financial accounts…</p>;
@@ -355,10 +384,13 @@ export function Workspace({ session }: { session: Session }) {
   const { summary } = accounts.data;
   const ownedAccounts = labelFinancialAccounts(accounts.data.accounts);
   const selectedAccount = ownedAccounts.find(({ id }) => id === historyId);
+  const brokerageAccounts = ownedAccounts.filter(({ type }) => type === "brokerage");
+  const selectedBrokerage = brokerageAccounts.find(({ id }) => id === holdingsId);
   const token = session.access_token;
   const transactionFormVisible = canRecordTransaction && showTransactionForm;
   const transferFormVisible = canRecordTransfer && showTransferForm;
-  const hasOpenForm = transactionFormVisible || transferFormVisible || showAccountForm;
+  const tradeFormVisible = canRecordTrade && showTradeForm;
+  const hasOpenForm = transactionFormVisible || transferFormVisible || tradeFormVisible || showAccountForm;
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -380,6 +412,15 @@ export function Workspace({ session }: { session: Session }) {
                 else setShowTransferForm(true);
               }}>Transfer cash</Button>
           )}
+          {canRecordTrade && (
+            <Button ref={tradeButton} variant="outline" aria-expanded={tradeFormVisible}
+              aria-controls={tradeFormVisible ? "record-etf-trade-form" : undefined}
+              onClick={() => {
+                setTradeNotice("");
+                if (tradeFormVisible) document.getElementById("record-etf-trade-heading")?.focus();
+                else setShowTradeForm(true);
+              }}>Record an ETF trade</Button>
+          )}
           <Button ref={openAccountButton} variant={canRecordTransaction ? "outline" : "default"}
             aria-expanded={showAccountForm} aria-controls={showAccountForm ? "open-account-form" : undefined}
             onClick={() => {
@@ -397,7 +438,7 @@ export function Workspace({ session }: { session: Session }) {
         </p>
         <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {([
-            ["Total balance", summary.balance],
+            ["Total cash balance", summary.balance],
             ["Income", summary.income],
             ["Expenses", summary.expenses],
             ["Net cashflow", summary.netCashflow],
@@ -410,7 +451,24 @@ export function Workspace({ session }: { session: Session }) {
             </div>
           ))}
         </dl>
+        {canRecordTrade && (
+          <div className="min-w-0 rounded-xl border border-[#d8e4db] bg-white p-4">
+            <h2 className="text-sm font-semibold">Portfolio valuation</h2>
+            {portfolio.isPending && <p role="status" className="mt-1 text-sm text-[#495e55]">Loading portfolio valuation…</p>}
+            {portfolio.isError && <p role="alert" className="mt-1 text-sm text-[#8f3023]">Portfolio valuation unavailable.</p>}
+            {portfolio.data && (
+              <>
+                <p className="mt-1 break-words text-lg font-semibold tabular-nums">{formatSgd(portfolio.data.knownSubtotal)}</p>
+                {portfolio.data.valuation === "partial" && <p className="mt-1 text-sm text-[#495e55]">
+                  Partial valuation · {portfolio.data.unpricedHoldings} {portfolio.data.unpricedHoldings === 1
+                    ? "holding awaiting a price" : "holdings awaiting prices"}
+                </p>}
+              </>
+            )}
+          </div>
+        )}
       </section>
+      {tradeNotice && <p role="status" className="mb-4 text-sm text-[#286347]">{tradeNotice}</p>}
       <div className={`grid items-start gap-6${hasOpenForm ? " lg:grid-cols-[minmax(0,1fr)_22rem]" : ""}`}>
         <div className="grid min-w-0 gap-6">
           <AccountList accounts={ownedAccounts} token={token} queryKey={queryKey} historyId={historyId} onHistory={(id) => {
@@ -419,7 +477,17 @@ export function Workspace({ session }: { session: Session }) {
             } else {
               setHistoryId(id);
             }
+          }} holdingsId={holdingsId} onHoldings={(id) => {
+            if (id === holdingsId) document.getElementById("brokerage-holdings-heading")?.focus();
+            else setHoldingsId(id);
           }} />
+          {selectedBrokerage && (
+            <BrokerageHoldings key={selectedBrokerage.id} account={selectedBrokerage} token={token} queryKey={queryKey}
+              onClose={() => {
+                setHoldingsId(undefined);
+                document.getElementById(`holdings-${selectedBrokerage.id}`)?.focus();
+              }} />
+          )}
           {selectedAccount && (
             <TransactionHistory key={selectedAccount.id} account={selectedAccount} accounts={ownedAccounts}
               token={token} queryKey={queryKey}
@@ -441,6 +509,17 @@ export function Workspace({ session }: { session: Session }) {
               onCancel={() => {
                 setShowTransferForm(false);
                 transferButton.current?.focus();
+              }} />}
+            {tradeFormVisible && <EtfTradeForm accounts={brokerageAccounts} token={token} queryKey={queryKey}
+              onCancel={() => {
+                setShowTradeForm(false);
+                tradeButton.current?.focus();
+              }}
+              onSaved={(trade) => {
+                setShowTradeForm(false);
+                setTradeNotice(`${trade.ticker} ${trade.type} recorded.`);
+                setHoldingsId(trade.accountId);
+                if (trade.accountId === holdingsId) document.getElementById("brokerage-holdings-heading")?.focus();
               }} />}
             {showAccountForm && <AccountForm token={token} queryKey={queryKey} onCancel={() => {
               setShowAccountForm(false);

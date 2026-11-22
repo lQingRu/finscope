@@ -1,3 +1,4 @@
+import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { apiErrorResponses } from "@finscope/contracts/api-errors";
 import { z } from "zod";
 import { calendarDateSchema } from "@finscope/contracts/calendar-date";
@@ -94,6 +95,7 @@ export const financialAccountResponses = {
   correct: {
     200: financialAccount,
     ...financialAccountErrors,
+    409: tradeFundingConflict,
     404: z.object({ status: z.literal("not_found") }),
   },
 };

@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { z } from "zod";
 import { createApi } from "./app.ts";
 import { migrateDatabase } from "./database.ts";
+import { createEtfTradeRepository } from "./etf-trades/repository.ts";
 import { createOwnerAuthorizer } from "./financial-accounts/authorization.ts";
 import { createFinancialAccountRepository } from "./financial-accounts/repository.ts";
 import { configureTelemetry, flushTelemetry, reportError } from "./telemetry.ts";
@@ -82,6 +83,7 @@ const api = await createApi({
     }),
     repository: createFinancialAccountRepository(db),
     transferRepository: createTransferRepository(db),
+    etfTradeRepository: createEtfTradeRepository(db),
   },
   corsOrigin: config.CORS_ORIGIN,
   reportError,

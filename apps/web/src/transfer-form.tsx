@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import { useForm } from "react-hook-form";
-import { isAccessError } from "./account-api";
+import { AccountApiError, isAccessError } from "./account-api";
 import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 import { FormField } from "./form-field";
@@ -134,9 +134,11 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
           <p role="alert" className="mt-3 text-sm text-[#8f3023]">
             {isAccessError(save.error)
               ? "Your session no longer has access. Sign out and try again."
-              : save.error instanceof TransferApiError && save.error.status === 404
-                ? "This transfer is no longer available."
-                : "FinScope couldn’t confirm the save. Check the account history before trying again."}
+              : save.error instanceof AccountApiError && save.error.fundingError
+                ? save.error.fundingError
+                : save.error instanceof TransferApiError && save.error.status === 404
+                  ? "This transfer is no longer available."
+                  : "FinScope couldn’t confirm the save. Check the account history before trying again."}
           </p>
         )}
         {notice && <p role="status" className="mt-3 text-sm text-[#286347]">{notice}</p>}

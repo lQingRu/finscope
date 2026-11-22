@@ -1,3 +1,4 @@
+import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { financialAccountErrors, financialAccountResponses } from "@finscope/contracts/financial-accounts";
 import type { CorrectFinancialAccount, OpenFinancialAccount, ReportingPeriod } from "@finscope/contracts/financial-accounts";
 
@@ -5,9 +6,14 @@ export const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const endpoint = new URL("/financial-accounts", apiUrl);
 
 export class AccountApiError extends Error {
-  constructor(readonly status: number, readonly openingDateError?: string) {
+  constructor(readonly status: number, readonly openingDateError?: string, readonly fundingError?: string) {
     super(`Account API returned ${status}`);
   }
+}
+
+export async function tradeFundingApiError(response: Response) {
+  const body = tradeFundingConflict.safeParse(await response.json().catch(() => null));
+  return new AccountApiError(response.status, undefined, body.data?.message);
 }
 
 export async function listAccounts(token: string, period: ReportingPeriod | undefined, signal: AbortSignal) {
@@ -34,6 +40,7 @@ async function saveAccount(
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  if (response.status === 409) throw await tradeFundingApiError(response);
   if (response.status === 400) {
     const body = financialAccountErrors[400].safeParse(await response.json().catch(() => null));
     throw new AccountApiError(400, body.data?.openingDateError);

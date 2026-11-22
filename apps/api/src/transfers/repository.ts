@@ -3,6 +3,7 @@ import type { TransferInput } from "@finscope/contracts/transfers";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { retainDeletedActivity } from "../audit/activity-deletions.ts";
+import { assertSavedBuysFunded } from "../etf-trades/cash.ts";
 import { lockOwnerActivity } from "../financial-accounts/activity-lock.ts";
 import { accounts } from "../financial-accounts/table.ts";
 import type { TransferRepository, TransferWriteResult } from "./routes.ts";
@@ -13,10 +14,8 @@ export function createTransferRepository(db: NodePgDatabase): TransferRepository
     return db.transaction(async (write) => {
       await lockOwnerActivity(write, ownerUserId);
       const transferScope = transferId && and(eq(transfers.ownerUserId, ownerUserId), eq(transfers.id, transferId));
-      if (transferScope) {
-        const [existing] = await write.select({ id: transfers.id }).from(transfers).where(transferScope);
-        if (!existing) return { status: "not_found" };
-      }
+      const [existing] = transferScope ? await write.select(transferColumns).from(transfers).where(transferScope) : [];
+      if (transferScope && !existing) return { status: "not_found" };
 
       // Lock both account rows against opening-date updates from older API versions.
       const selected = await write.select({ id: accounts.id, openingDate: accounts.openingDate }).from(accounts)
@@ -35,6 +34,9 @@ export function createTransferRepository(db: NodePgDatabase): TransferRepository
       const [transfer] = transferScope
         ? await write.update(transfers).set(values).where(transferScope).returning(transferColumns)
         : await write.insert(transfers).values(values).returning(transferColumns);
+      const affectedAccounts = [input.sourceAccountId, input.destinationAccountId];
+      if (existing) affectedAccounts.push(existing.sourceAccountId, existing.destinationAccountId);
+      await assertSavedBuysFunded(write, ownerUserId, affectedAccounts);
       return { status: "saved", transfer };
     }, { isolationLevel: "read committed" });
   }
@@ -47,6 +49,7 @@ export function createTransferRepository(db: NodePgDatabase): TransferRepository
           .where(and(eq(transfers.ownerUserId, ownerUserId), eq(transfers.id, transferId))).returning();
         if (!removed) return "not_found";
 
+        await assertSavedBuysFunded(write, ownerUserId, [removed.sourceAccountId, removed.destinationAccountId]);
         await retainDeletedActivity(write, "transfer", removed);
         return "deleted";
       }, { isolationLevel: "read committed" });

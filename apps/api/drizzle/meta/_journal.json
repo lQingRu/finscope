@@ -36,6 +36,13 @@
       "when": 1795334400003,
       "tag": "0004_activity_deletions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795334400004,
+      "tag": "0005_etf_trades",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { transferResponses } from "@finscope/contracts/transfers";
 import type { TransferFieldErrors, TransferInput } from "@finscope/contracts/transfers";
-import { AccountApiError, apiUrl } from "./account-api";
+import { AccountApiError, apiUrl, tradeFundingApiError } from "./account-api";
 
 export class TransferApiError extends AccountApiError {
   constructor(status: number, readonly fieldErrors?: TransferFieldErrors) {
@@ -15,6 +15,7 @@ export async function saveTransfer(token: string, input: TransferInput, transfer
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  if (response.status === 409) throw await tradeFundingApiError(response);
   if (response.status === 400 || response.status === 404) {
     const body = transferResponses.record[response.status].safeParse(await response.json().catch(() => null));
     throw new TransferApiError(response.status, body.data?.fieldErrors);

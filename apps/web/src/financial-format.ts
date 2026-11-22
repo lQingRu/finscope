@@ -19,3 +19,14 @@ const dateFormat = new Intl.DateTimeFormat("en-SG", {
 export function formatDate(date: string) {
   return dateFormat.format(new Date(date));
 }
+
+const tradeAmountFormat = new Intl.NumberFormat("en-SG", {
+  style: "currency",
+  currency: "SGD",
+  currencyDisplay: "code",
+  maximumFractionDigits: 16,
+});
+
+export function formatTradeSgd(amount: string) {
+  return tradeAmountFormat.format(amount as `${number}`);
+}

@@ -98,7 +98,7 @@
             "$ref": "#/components/responses/AuthUnavailable"
           }
         },
-        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances, all recorded transactions, and outgoing and incoming cash transfers. Income, expenses, and net cashflow use the inclusive reporting period and exclude cash transfers. Without dates, totals use the current calendar month in Asia/Singapore.",
+        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances, all recorded transactions, outgoing and incoming cash transfers, and brokerage trade cash movements. Income, expenses, and net cashflow use the inclusive reporting period and exclude cash transfers and ETF trades. Without dates, totals use the current calendar month in Asia/Singapore.",
         "parameters": [
           {
             "name": "view",
@@ -233,6 +233,9 @@
           },
           "404": {
             "$ref": "#/components/responses/AccountNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -443,6 +446,9 @@
           "404": {
             "$ref": "#/components/responses/TransactionNotFound"
           },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
+          },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
           },
@@ -506,6 +512,9 @@
           "404": {
             "$ref": "#/components/responses/TransactionNotFound"
           },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
+          },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
           },
@@ -549,6 +558,9 @@
           },
           "404": {
             "$ref": "#/components/responses/TransactionNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -599,6 +611,9 @@
           },
           "404": {
             "$ref": "#/components/responses/TransferNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -664,6 +679,9 @@
           "404": {
             "$ref": "#/components/responses/TransferNotFound"
           },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
+          },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
           },
@@ -707,6 +725,340 @@
           },
           "404": {
             "$ref": "#/components/responses/TransferNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/TradeFundingConflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/etf-trades": {
+      "post": {
+        "summary": "Record an SGD ETF buy or sell",
+        "description": "Trades are ordered by date, then entry order. Same-date everyday transactions and cash transfers are included before trade funding is checked. A backdated trade is rejected if it would leave any buy unfunded or any sale short of units.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EtfTradeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The recorded trade.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTrade"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An invalid trade or brokerage account was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The brokerage account or trade is unavailable to this owner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The trade would exceed available cash or units, or it requires historical correction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeConflict"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/etf-trades/{tradeId}": {
+      "patch": {
+        "summary": "Update an ETF trade",
+        "description": "Investment context can be edited on any trade. Financial edits are available on the latest trade in the account and must keep it last. The brokerage account, ticker and exchange are fixed after recording.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tradeId",
+            "in": "path",
+            "required": true,
+            "description": "The saved ETF trade ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EtfTradeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated trade.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTrade"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An invalid trade or brokerage account was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The brokerage account or trade is unavailable to this owner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The trade would exceed available cash or units, or it requires historical correction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeConflict"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete the latest ETF trade in a brokerage account",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tradeId",
+            "in": "path",
+            "required": true,
+            "description": "The saved ETF trade ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The trade was removed and the deletion record was retained."
+          },
+          "400": {
+            "description": "An invalid trade or brokerage account was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The brokerage account or trade is unavailable to this owner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeNotFound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The trade would exceed available cash or units, or it requires historical correction.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeConflict"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/financial-accounts/{accountId}/holdings": {
+      "get": {
+        "summary": "Read an owned brokerage account's ETF holdings and trades",
+        "description": "Trades include their signed brokerage cash movements in reverse execution order. Closed positions remain available for trade history, fees and realised profit or loss.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "path",
+            "required": true,
+            "description": "The brokerage account ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Brokerage ETF holdings and trade history.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerageHoldings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An invalid trade or brokerage account was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "The brokerage account or trade is unavailable to this owner.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EtfTradeNotFound"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/portfolio": {
+      "get": {
+        "summary": "Read the known SGD portfolio subtotal and valuation completeness",
+        "description": "The known subtotal includes recorded cash. A portfolio with open holdings awaiting price has partial valuation. Unpriced holdings contribute no market value to the known subtotal.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Valuation status and known subtotal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioValuation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -1491,6 +1843,420 @@
           "status"
         ],
         "additionalProperties": false
+      },
+      "EtfTradeInput": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "pattern": "^[A-Z0-9][A-Z0-9._/-]{0,23}$"
+          },
+          "exchange": {
+            "type": "string",
+            "pattern": "^[A-Z0-9._-]{0,20}$"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])[0-9]{1,12}(?:\\.[0-9]{1,8})?$"
+          },
+          "executionPrice": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])[0-9]{1,12}(?:\\.[0-9]{1,8})?$"
+          },
+          "fee": {
+            "type": "string",
+            "pattern": "^[0-9]{1,12}(?:\\.[0-9]{1,2})?$"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 500,
+            "pattern": "^[^\\0]*$"
+          },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\0]*$"
+          },
+          "tags": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[^,\\0]+$"
+            }
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\0]*$"
+          }
+        },
+        "required": [
+          "ticker",
+          "currency",
+          "accountId",
+          "type",
+          "date",
+          "quantity",
+          "executionPrice",
+          "fee"
+        ],
+        "additionalProperties": false
+      },
+      "EtfTrade": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "pattern": "^[A-Z0-9][A-Z0-9._/-]{0,23}$"
+          },
+          "exchange": {
+            "type": "string",
+            "pattern": "^[A-Z0-9._-]{0,20}$"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "buy",
+              "sell"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,8})?$"
+          },
+          "executionPrice": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "fee": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 500,
+            "pattern": "^[^\\0]*$"
+          },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\0]*$"
+          },
+          "tags": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "pattern": "^[^,\\0]+$"
+            }
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\0]*$"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "grossAmount": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "cashMovement": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "realisedPnl": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "canChangeFinancialDetails": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ticker",
+          "exchange",
+          "currency",
+          "accountId",
+          "type",
+          "date",
+          "quantity",
+          "executionPrice",
+          "fee",
+          "purpose",
+          "strategy",
+          "tags",
+          "notes",
+          "id",
+          "grossAmount",
+          "cashMovement",
+          "realisedPnl",
+          "canChangeFinancialDetails"
+        ],
+        "additionalProperties": false
+      },
+      "EtfHolding": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "pattern": "^[A-Z0-9][A-Z0-9._/-]{0,23}$"
+          },
+          "exchange": {
+            "type": "string",
+            "pattern": "^[A-Z0-9._-]{0,20}$"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "units": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,8})?$"
+          },
+          "costBasis": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "averageCost": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "fees": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "realisedPnl": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "valuation": {
+            "type": "string",
+            "enum": [
+              "awaiting_price",
+              "closed"
+            ]
+          },
+          "marketValue": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "unrealisedPnl": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          }
+        },
+        "required": [
+          "ticker",
+          "exchange",
+          "currency",
+          "units",
+          "costBasis",
+          "averageCost",
+          "fees",
+          "realisedPnl",
+          "valuation",
+          "marketValue",
+          "unrealisedPnl"
+        ],
+        "additionalProperties": false
+      },
+      "BrokerageHoldings": {
+        "type": "object",
+        "properties": {
+          "holdings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EtfHolding"
+            }
+          },
+          "trades": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EtfTrade"
+            }
+          }
+        },
+        "required": [
+          "holdings",
+          "trades"
+        ],
+        "additionalProperties": false
+      },
+      "PortfolioValuation": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "enum": [
+              "SGD"
+            ]
+          },
+          "valuation": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "knownSubtotal": {
+            "type": "string",
+            "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]{2,16}$"
+          },
+          "unpricedHoldings": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "currency",
+          "valuation",
+          "knownSubtotal",
+          "unpricedHoldings"
+        ],
+        "additionalProperties": false
+      },
+      "EtfTradeNotFound": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_found"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "EtfTradeValidationError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "invalid_request"
+            ]
+          },
+          "fieldErrors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "EtfTradeConflict": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "historical_trade",
+              "insufficient_cash",
+              "insufficient_units"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "affectedTradeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "shortfall": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
+      },
+      "TradeFundingConflict": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "insufficient_cash"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "affectedTradeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "shortfall": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ]
       }
     },
     "responses": {
@@ -1682,6 +2448,16 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/TransferNotFound"
+            }
+          }
+        }
+      },
+      "TradeFundingConflict": {
+        "description": "This cash activity would leave a recorded ETF purchase without sufficient brokerage cash.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TradeFundingConflict"
             }
           }
         }

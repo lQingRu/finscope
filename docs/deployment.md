@@ -127,13 +127,15 @@ unset FINSCOPE_ACCESS_TOKEN auth_header
 
 ### Roll back or roll forward
 
-Restrict owner access and pause writes during recovery. Keep the database and applied migrations in place. Use the provider dashboards to restore a compatible API and Pages deployment. Before restoring a release that predates cash transfers, confirm that the database has no recorded transfers. Once a transfer exists, use a prior API and Pages release that both support transfers or roll forward with a fix. A pre-transfer API can pass `/health` while omitting recorded transfers from account balances and histories.
+Restrict owner access and pause writes during recovery. Keep the database and applied migrations in place. Use the provider dashboards to restore a compatible API and Pages deployment. Before restoring a release that predates cash transfers, confirm that the database has no recorded transfers. Once a transfer exists, use a prior API and Pages release that both support transfers or roll forward with a fix. A pre-transfer API can pass `/health` while omitting recorded transfers from account balances and histories. Once an ETF trade exists, restore only an API and Pages release that supports ETF trades as well. Earlier releases omit the trade cash movements and can allow funding changes that invalidate recorded buys.
 
 Before reopening access, check API readiness and open the Pages site. If there are recorded transfers, use a known transfer and compare with the last known correct figures for the same reporting period:
 
 - Check both account histories for the same amount and date, with an outgoing entry in the source account and an incoming entry in the destination account.
 - Check that the source and destination balances reflect the debit and credit and that the transfer leaves total balance unchanged.
 - Check that income, expenses and net cashflow for the same period exclude the transfer and match the expected amounts.
+
+If there are recorded ETF trades, reconcile brokerage cash against opening cash, transactions, transfers, and recorded trade movements. Compare a known holding's units, remaining cost and realised profit or loss with the last correct figures. Verify that unpriced open holdings produce a partial portfolio valuation and that trades are excluded from everyday income and spending.
 
 Keep access restricted if any financial check fails and verify again after a compatible release is deployed.
 
@@ -159,4 +161,4 @@ psql "$FINSCOPE_RESTORE_TARGET_URL" -v ON_ERROR_STOP=1 -c '
 
 Compare the restored names, dates and amounts with the source, including the SGD 3,000 bank opening balance and SGD 0 brokerage opening balance. Start a separate API against the restored database using the same Supabase Auth project and owner values. Check `/health` and the owner's `GET /financial-accounts` response, including zero income and expenses. Record the restore date, backup timestamp and results without including account data or connection credentials. Store the dump with restricted access and encryption.
 
-The backup includes financial accounts, active transactions and transfers, retained deletion records, and the migration history. Supabase Auth is managed separately. Recovery into a replacement Auth project requires bootstrapping the same Google identity, checking its provider ID against the recorded owner value and remapping the old owner UUID to the new UUID in the restored database before starting the API. Keep the production connection pointed at the current data until a replacement has passed verification.
+The backup includes financial accounts, active transactions, transfers and ETF trades, retained deletion records, and the migration history. Supabase Auth is managed separately. Recovery into a replacement Auth project requires bootstrapping the same Google identity, checking its provider ID against the recorded owner value and remapping the old owner UUID to the new UUID in the restored database before starting the API. Keep the production connection pointed at the current data until a replacement has passed verification.
