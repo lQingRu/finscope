@@ -35,6 +35,7 @@ const transferErrors = {
   503: z.object({ status: z.literal("unavailable") }),
 };
 export const transferResponses = {
+  delete: transferErrors,
   record: { ...transferErrors, 201: savedTransfer },
   correct: { ...transferErrors, 200: savedTransfer },
 };

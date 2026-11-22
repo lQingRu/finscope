@@ -16,6 +16,7 @@ export type TransactionWriteResult =
 
 export type TransactionRepository = {
   listTransactions: (ownerUserId: string, accountId: string, filters: TransactionHistoryQuery) => Promise<AccountHistory | undefined>;
+  deleteTransaction: (ownerUserId: string, transactionId: string) => Promise<"deleted" | "not_found">;
   correctTransaction: (ownerUserId: string, transactionId: string, input: TransactionInput) => Promise<TransactionWriteResult>;
   recordTransaction: (ownerUserId: string, input: TransactionInput) => Promise<TransactionWriteResult>;
 };
@@ -77,5 +78,17 @@ export function registerTransactionRoutes(api: FastifyInstance, repository: Tran
       return reply.code(400).send(transactionResponses.correct[400].parse({ status: "invalid_request" }));
     }
     return saveTransaction(request, reply, params.data.transactionId);
+  });
+  api.delete("/transactions/:transactionId", async (request, reply) => {
+    const params = transactionParams.safeParse(request.params);
+    if (!params.success) {
+      return reply.code(400).send(transactionResponses.delete[400].parse({ status: "invalid_request" }));
+    }
+
+    const result = await repository.deleteTransaction(request.getDecorator<string>("workspaceOwnerId"), params.data.transactionId);
+    if (result === "not_found") {
+      return reply.code(404).send(transactionResponses.delete[404].parse({ status: "not_found" }));
+    }
+    return reply.code(204).send();
   });
 }

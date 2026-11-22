@@ -1,17 +1,17 @@
 import { transactionCategories, transactionHistoryQuery } from "@finscope/contracts/transactions";
 import type { Transaction, TransactionHistoryQuery } from "@finscope/contracts/transactions";
-import type { Transfer } from "@finscope/contracts/transfers";
+import type { Transfer, TransferHistoryEntry } from "@finscope/contracts/transfers";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { isAccessError } from "./account-api";
+import { AccountApiError, isAccessError } from "./account-api";
 import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 import { formatDate, formatSgd } from "./financial-format";
 import { FormField } from "./form-field";
-import { listTransactions, TransactionApiError } from "./transaction-api";
+import { deleteActivity, listTransactions, TransactionApiError } from "./transaction-api";
 import { TransactionForm } from "./transaction-form";
 import { TransferForm } from "./transfer-form";
 
@@ -38,8 +38,28 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   });
   const [type, from, to] = watch(["type", "from", "to"]);
   const [notice, setNotice] = useState("");
+  const [deleting, setDeleting] = useState<Transaction | TransferHistoryEntry>();
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const deleteTitle = useId();
+  const deleteDescription = useId();
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
+  const queryClient = useQueryClient();
+  const removal = useMutation({
+    mutationFn: (entry: Transaction | TransferHistoryEntry) =>
+      deleteActivity(token, "direction" in entry ? "transfer" : "transaction", entry.id),
+    onSuccess: async (_data, entry) => {
+      await queryClient.invalidateQueries({ queryKey });
+      deleteDialog.current?.close();
+      setNotice("direction" in entry ? "Transfer deleted." : "Transaction deleted.");
+      heading.current?.focus();
+    },
+    onError: async (error) => {
+      if (isAccessError(error) || (error instanceof AccountApiError && error.status === 404)) {
+        await queryClient.invalidateQueries({ queryKey });
+      }
+    },
+  });
   const history = useQuery({
     queryKey: [...queryKey, "transactions", account.id, filters],
     queryFn: ({ signal }) => listTransactions(token, account.id, filters, signal),
@@ -47,6 +67,10 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
       && !(error instanceof TransactionApiError && error.status === 404) && count < 1,
   });
   useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => {
+    const dialog = deleteDialog.current;
+    if (deleting && dialog && !dialog.open) dialog.showModal();
+  }, [deleting]);
 
   function changeEditor(next?: HistoryEditor) {
     activeEditor.current = next;
@@ -62,6 +86,10 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   const categories = type === "income" || type === "expense"
     ? transactionCategories[type]
     : [...transactionCategories.income, ...transactionCategories.expense];
+
+  const deletingTransfer = deleting && "direction" in deleting ? deleting : undefined;
+  const sourceLabel = deletingTransfer && accounts.find(({ id }) => id === deletingTransfer.sourceAccountId)?.label;
+  const destinationLabel = deletingTransfer && accounts.find(({ id }) => id === deletingTransfer.destinationAccountId)?.label;
 
   const entries = history.data && [...history.data.transactions, ...(history.data.transfers ?? [])]
     .sort((first, second) => second.date.localeCompare(first.date));
@@ -197,6 +225,14 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
                         changeEditor({ kind, id: entry.id });
                       }}
                     >Edit</Button>
+                    <Button variant="outline" disabled={editing}
+                      aria-label={`Delete ${editLabel} on ${formatDate(entry.date)}`}
+                      onClick={() => {
+                        removal.reset();
+                        setNotice("");
+                        setDeleting(entry);
+                      }}
+                    >Delete</Button>
                   </div>
                 </div>
                 {editing && (isTransfer
@@ -212,6 +248,35 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
           })}
         </ul>
       )}
+      <dialog ref={deleteDialog} aria-labelledby={deleteTitle} aria-describedby={deleting ? deleteDescription : undefined}
+        className="m-auto w-full max-w-sm rounded-xl p-5 shadow-lg backdrop:bg-black/40"
+        onCancel={(event) => { if (removal.isPending) event.preventDefault(); }}
+        onClose={() => setDeleting(undefined)}>
+        <h3 id={deleteTitle} className="font-semibold">Delete {deletingTransfer ? "transfer" : "transaction"}?</h3>
+        {deleting && (
+          <p id={deleteDescription} className="my-3 break-words text-sm">
+            {"direction" in deleting
+              ? <>Remove the {formatSgd(deleting.amount)} transfer on {formatDate(deleting.date)} from both histories.
+                This credits {sourceLabel ?? "the source account"} and debits {destinationLabel ?? "the destination account"} by that amount.</>
+              : <>Remove the {formatSgd(deleting.amount)} {deleting.type === "income" ? "income" : "expense"} on {formatDate(deleting.date)} from {account.label} and recalculate its balance and cashflow.</>}
+          </p>
+        )}
+        {removal.isError && <p role="alert" className="mb-3 text-sm text-[#8f3023]">
+          {isAccessError(removal.error)
+            ? "Your session no longer has access. Sign out and try again."
+            : removal.error instanceof AccountApiError && removal.error.status === 404
+              ? "This entry is no longer available."
+              : "FinScope couldn’t confirm the deletion. Check the account history before trying again."}
+        </p>}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" autoFocus disabled={removal.isPending} onClick={() => deleteDialog.current?.close()}>Cancel</Button>
+          <Button disabled={removal.isPending || !deleting ||
+            (removal.error instanceof AccountApiError && removal.error.status === 404)}
+            onClick={() => { if (deleting) removal.mutate(deleting); }}>
+            {removal.isPending ? "Deleting…" : deletingTransfer ? "Delete transfer" : "Delete transaction"}
+          </Button>
+        </div>
+      </dialog>
     </section>
   );
 }

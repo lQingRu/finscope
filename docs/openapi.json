@@ -513,6 +513,50 @@
             "$ref": "#/components/responses/AuthUnavailable"
           }
         }
+      },
+      "delete": {
+        "summary": "Delete a recorded transaction",
+        "description": "Removes the transaction from active history and recalculates the account balance and everyday cashflow. A private audit record is retained.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transactionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Transaction deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransaction"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TransactionNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
       }
     },
     "/transfers": {
@@ -607,6 +651,50 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransfer"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TransferNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a recorded transfer",
+        "description": "Removes the transfer from both account histories and reverses the source and destination balance effects together. Total cash and everyday cashflow are unchanged. A private audit record is retained.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transferId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Transfer deleted"
           },
           "400": {
             "$ref": "#/components/responses/InvalidTransfer"

@@ -2,6 +2,7 @@ import type { AccountHistory, TransactionInput } from "@finscope/contracts/trans
 import type { TransferHistoryEntry } from "@finscope/contracts/transfers";
 import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { retainDeletedActivity } from "../audit/activity-deletions.ts";
 import type { TransactionWriteResult } from "../transactions/routes.ts";
 import { transactions } from "../transactions/table.ts";
 import { transferColumns, transfers } from "../transfers/table.ts";
@@ -114,6 +115,17 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
         )).orderBy(desc(transfers.date), desc(transfers.createdAt), desc(transfers.id));
         return { transactions: everyday, transfers: accountTransfers };
       }, { isolationLevel: "repeatable read", accessMode: "read only" });
+    },
+    async deleteTransaction(ownerUserId, transactionId) {
+      return db.transaction(async (write) => {
+        await lockOwnerActivity(write, ownerUserId);
+        const [removed] = await write.delete(transactions)
+          .where(and(eq(transactions.ownerUserId, ownerUserId), eq(transactions.id, transactionId))).returning();
+        if (!removed) return "not_found";
+
+        await retainDeletedActivity(write, "transaction", removed);
+        return "deleted";
+      }, { isolationLevel: "read committed" });
     },
     recordTransaction: (ownerUserId, input) => saveTransaction(ownerUserId, input),
     correctTransaction: (ownerUserId, transactionId, input) => saveTransaction(ownerUserId, input, transactionId),
