@@ -7,14 +7,16 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AccountApiError, correctAccount, deleteAccount, isAccessError, listAccounts, openAccount } from "./account-api";
+import { accountTypeLabels, labelFinancialAccounts } from "./account-labels";
+import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 
 import { formatDate, formatSgd } from "./financial-format";
 import { FormField, inputStyle } from "./form-field";
 import { TransactionForm } from "./transaction-form";
 import { TransactionHistory } from "./transaction-history";
+import { TransferForm } from "./transfer-form";
 
-const accountTypeLabels = { bank: "Bank", brokerage: "Brokerage" };
 const emptyForm = { name: "", openingDate: "", openingBalance: "" };
 const defaultAccountType = "bank";
 
@@ -24,7 +26,7 @@ type AccountFormContext = { token: string; queryKey: readonly string[] };
 
 type HistoryControl = { historyId?: string; onHistory: (accountId: string) => void };
 
-function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { account: AccountWithBalance }) {
+function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { account: LabeledAccount<AccountWithBalance> }) {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState("");
   const editButton = useRef<HTMLButtonElement>(null);
@@ -55,7 +57,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
     <li className="px-5 py-4">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
         <div className="min-w-0">
-          <h3 className="font-semibold break-words">{account.name}</h3>
+          <h3 className="font-semibold break-words">{account.label}</h3>
           <p className="mt-1 text-sm text-[#495e55]">
             {accountTypeLabels[account.type]} · Opened{" "}
             <time dateTime={account.openingDate}>{formatDate(account.openingDate)}</time>
@@ -64,7 +66,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
         </div>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 sm:justify-end">
           <span className="max-w-full break-words font-semibold tabular-nums">{formatSgd(account.balance)}</span>
-          <Button id={`history-${account.id}`} variant="outline" aria-label={`View history for ${account.name}`}
+          <Button id={`history-${account.id}`} variant="outline" aria-label={`View history for ${account.label}`}
             aria-expanded={historyId === account.id}
             aria-controls={historyId === account.id ? "account-transaction-history" : undefined}
             onClick={() => onHistory(account.id)}
@@ -72,7 +74,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
           <Button
             ref={editButton}
             variant="outline"
-            aria-label={`Edit ${account.name}`}
+            aria-label={`Edit ${account.label}`}
             aria-expanded={editing}
             onClick={() => {
               setNotice("");
@@ -81,7 +83,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
           >
             Edit
           </Button>
-          <Button type="button" variant="outline" aria-label={`Delete ${account.name}`} disabled={editing || Boolean(account.earliestActivityDate)}
+          <Button type="button" variant="outline" aria-label={`Delete ${account.label}`} disabled={editing || Boolean(account.earliestActivityDate)}
             aria-describedby={account.earliestActivityDate ? `linked-activity-${account.id}` : undefined}
             onClick={() => {
             removal.reset();
@@ -90,11 +92,11 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
         </div>
       </div>
       {account.earliestActivityDate && (
-        <p id={`linked-activity-${account.id}`} className="mt-2 text-sm text-[#495e55]">Accounts with recorded transactions cannot be deleted.</p>
+        <p id={`linked-activity-${account.id}`} className="mt-2 text-sm text-[#495e55]">Accounts with recorded activity cannot be deleted.</p>
       )}
       <dialog ref={deleteDialog} aria-labelledby={deleteTitle} className="m-auto w-full max-w-sm rounded-xl p-5 shadow-lg backdrop:bg-black/40"
         onCancel={(event) => { if (removal.isPending) event.preventDefault(); }}>
-        <h4 id={deleteTitle} className="font-semibold">Delete {account.name}?</h4>
+        <h4 id={deleteTitle} className="font-semibold">Delete {account.label}?</h4>
         <p className="my-3 text-sm">This permanently deletes the account and removes its opening balance from total cash.</p>
         {removal.isError && <p role="alert" className="mb-3 text-sm">{removal.error instanceof AccountApiError && removal.error.status === 409
           ? "This account has recorded activity and cannot be deleted."
@@ -123,7 +125,7 @@ function AccountRow({ account, token, queryKey, historyId, onHistory }: AccountF
   );
 }
 
-function AccountList({ accounts, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { accounts: AccountWithBalance[] }) {
+function AccountList({ accounts, token, queryKey, historyId, onHistory }: AccountFormContext & HistoryControl & { accounts: LabeledAccount<AccountWithBalance>[] }) {
   return (
     <section aria-labelledby="accounts-heading">
       <h2 id="accounts-heading" tabIndex={-1} className="mb-3 text-lg font-semibold">Financial accounts</h2>
@@ -299,8 +301,10 @@ export function Workspace({ session }: { session: Session }) {
   const [period, setPeriod] = useState<ReportingPeriod>();
   const [historyId, setHistoryId] = useState<string>();
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const recordButton = useRef<HTMLButtonElement>(null);
+  const transferButton = useRef<HTMLButtonElement>(null);
   const openAccountButton = useRef<HTMLButtonElement>(null);
   const queryKey = [...accountsQueryKey, session.user.id];
   const accounts = useQuery({
@@ -310,10 +314,12 @@ export function Workspace({ session }: { session: Session }) {
     retry: (failureCount, error) => !isAccessError(error) && failureCount < 1,
   });
   const canRecordTransaction = Boolean(accounts.data?.accounts.length);
+  const canRecordTransfer = (accounts.data?.accounts.length ?? 0) >= 2;
 
   useEffect(() => {
     if (!canRecordTransaction) setShowTransactionForm(false);
-  }, [canRecordTransaction]);
+    if (!canRecordTransfer) setShowTransferForm(false);
+  }, [canRecordTransaction, canRecordTransfer]);
 
   if (accounts.isPending) {
     return <p role="status" className="text-sm text-[#495e55]">Loading your financial accounts…</p>;
@@ -346,10 +352,13 @@ export function Workspace({ session }: { session: Session }) {
     );
   }
 
-  const { summary, accounts: ownedAccounts } = accounts.data;
+  const { summary } = accounts.data;
+  const ownedAccounts = labelFinancialAccounts(accounts.data.accounts);
   const selectedAccount = ownedAccounts.find(({ id }) => id === historyId);
   const token = session.access_token;
   const transactionFormVisible = canRecordTransaction && showTransactionForm;
+  const transferFormVisible = canRecordTransfer && showTransferForm;
+  const hasOpenForm = transactionFormVisible || transferFormVisible || showAccountForm;
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -362,6 +371,14 @@ export function Workspace({ session }: { session: Session }) {
                 if (transactionFormVisible) document.getElementById("record-transaction-heading")?.focus();
                 else setShowTransactionForm(true);
               }}>Record a transaction</Button>
+          )}
+          {canRecordTransfer && (
+            <Button ref={transferButton} variant="outline" aria-expanded={transferFormVisible}
+              aria-controls={transferFormVisible ? "record-transfer-form" : undefined}
+              onClick={() => {
+                if (transferFormVisible) document.getElementById("record-transfer-heading")?.focus();
+                else setShowTransferForm(true);
+              }}>Transfer cash</Button>
           )}
           <Button ref={openAccountButton} variant={canRecordTransaction ? "outline" : "default"}
             aria-expanded={showAccountForm} aria-controls={showAccountForm ? "open-account-form" : undefined}
@@ -394,7 +411,7 @@ export function Workspace({ session }: { session: Session }) {
           ))}
         </dl>
       </section>
-      <div className={`grid items-start gap-6${transactionFormVisible || showAccountForm ? " lg:grid-cols-[minmax(0,1fr)_22rem]" : ""}`}>
+      <div className={`grid items-start gap-6${hasOpenForm ? " lg:grid-cols-[minmax(0,1fr)_22rem]" : ""}`}>
         <div className="grid min-w-0 gap-6">
           <AccountList accounts={ownedAccounts} token={token} queryKey={queryKey} historyId={historyId} onHistory={(id) => {
             if (id === historyId) {
@@ -413,12 +430,17 @@ export function Workspace({ session }: { session: Session }) {
             />
           )}
         </div>
-        {(transactionFormVisible || showAccountForm) && (
+        {hasOpenForm && (
           <div className="grid min-w-0 gap-6">
             {transactionFormVisible && <TransactionForm accounts={ownedAccounts} token={token} queryKey={queryKey}
               onCancel={() => {
                 setShowTransactionForm(false);
                 recordButton.current?.focus();
+              }} />}
+            {transferFormVisible && <TransferForm accounts={ownedAccounts} token={token} queryKey={queryKey}
+              onCancel={() => {
+                setShowTransferForm(false);
+                transferButton.current?.focus();
               }} />}
             {showAccountForm && <AccountForm token={token} queryKey={queryKey} onCancel={() => {
               setShowAccountForm(false);

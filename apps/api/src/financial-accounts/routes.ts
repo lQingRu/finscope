@@ -19,6 +19,8 @@ import { z } from "zod";
 import type { AuthorizeOwner } from "./authorization.ts";
 import { registerTransactionRoutes } from "../transactions/routes.ts";
 import type { TransactionRepository } from "../transactions/routes.ts";
+import { registerTransferRoutes } from "../transfers/routes.ts";
+import type { TransferRepository } from "../transfers/routes.ts";
 
 type AccountCorrection =
   | { status: "saved"; account: FinancialAccount }
@@ -35,6 +37,7 @@ export type FinancialAccountRepository = TransactionRepository & {
 export type FinancialAccountsOptions = {
   authorize: AuthorizeOwner;
   repository: FinancialAccountRepository;
+  transferRepository: TransferRepository;
 };
 
 const accountParams = z.object({ accountId: z.uuid() });
@@ -49,7 +52,7 @@ function invalidAccountInput(error: z.ZodError) {
 
 export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions> = async (
   api,
-  { authorize, repository },
+  { authorize, repository, transferRepository },
 ) => {
   api.decorateRequest("workspaceOwnerId", null);
   api.addHook("onRequest", async (request, reply) => {
@@ -82,6 +85,7 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
   });
 
   registerTransactionRoutes(api, repository);
+  registerTransferRoutes(api, transferRepository);
 
   api.post("/financial-accounts", async (request, reply) => {
     const input = openFinancialAccount.safeParse(request.body);

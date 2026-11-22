@@ -1,5 +1,4 @@
 import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
-import type { FinancialAccount } from "@finscope/contracts/financial-accounts";
 import {
   defaultTransactionCategory,
   transactionBeforeOpeningMessage,
@@ -12,6 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { isAccessError } from "./account-api";
+import type { LabeledAccount } from "./account-labels";
 import { Button } from "./components/ui/button";
 import { FormField } from "./form-field";
 import { saveTransaction, TransactionApiError } from "./transaction-api";
@@ -27,7 +27,7 @@ function blankTransaction(accountId: string, date: string): TransactionInput {
 }
 
 type TransactionFormProps = {
-  accounts: FinancialAccount[];
+  accounts: LabeledAccount[];
   token: string;
   queryKey: readonly string[];
 } & (
@@ -128,7 +128,7 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
             {(attributes) => (
               <select {...attributes} required {...register("accountId")}>
                 <option value="">Select an account</option>
-                {accounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                {accounts.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
               </select>
             )}
           </FormField>

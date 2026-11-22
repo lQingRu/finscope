@@ -7,6 +7,7 @@ import { migrateDatabase } from "./database.ts";
 import { createOwnerAuthorizer } from "./financial-accounts/authorization.ts";
 import { createFinancialAccountRepository } from "./financial-accounts/repository.ts";
 import { configureTelemetry, flushTelemetry, reportError } from "./telemetry.ts";
+import { createTransferRepository } from "./transfers/repository.ts";
 
 const envSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, hostname: /./ }),
@@ -80,6 +81,7 @@ const api = await createApi({
       ownerGoogleSubject: config.FINSCOPE_OWNER_GOOGLE_SUB,
     }),
     repository: createFinancialAccountRepository(db),
+    transferRepository: createTransferRepository(db),
   },
   corsOrigin: config.CORS_ORIGIN,
   reportError,
