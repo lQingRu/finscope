@@ -98,7 +98,7 @@
             "$ref": "#/components/responses/AuthUnavailable"
           }
         },
-        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances and all recorded transactions. Income, expenses, and net cashflow use the inclusive reporting period. Without dates, totals use the current calendar month in Asia/Singapore.",
+        "description": "Omit all parameters for the original account list response. Use view=overview or supply both from and to for account balances, the earliest activity dates, and full reporting totals. Balances include opening balances, all recorded transactions, and outgoing and incoming cash transfers. Income, expenses, and net cashflow use the inclusive reporting period and exclude cash transfers. Without dates, totals use the current calendar month in Asia/Singapore.",
         "parameters": [
           {
             "name": "view",
@@ -290,8 +290,8 @@
     },
     "/financial-accounts/{accountId}/transactions": {
       "get": {
-        "summary": "List an account's transactions",
-        "description": "Filters are optional and combine. Date bounds are inclusive. Rows are sorted by transaction date, then creation time, newest first.",
+        "summary": "List an account's transactions and optionally its transfers",
+        "description": "Filters are optional and combine. Date bounds are inclusive. Within each list, rows are sorted by date, then creation time, newest first.",
         "security": [
           {
             "supabaseAccessToken": []
@@ -305,6 +305,17 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "includeTransfers",
+            "in": "query",
+            "description": "Set to true to include cash transfers. Transfers match the date bounds and are excluded when filtering by everyday transaction type or category.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           },
           {
@@ -339,7 +350,7 @@
           {
             "name": "from",
             "in": "query",
-            "description": "Earliest transaction date, inclusive.",
+            "description": "Earliest activity date, inclusive.",
             "schema": {
               "type": "string",
               "format": "date",
@@ -350,7 +361,7 @@
           {
             "name": "to",
             "in": "query",
-            "description": "Latest transaction date, inclusive.",
+            "description": "Latest activity date, inclusive.",
             "schema": {
               "type": "string",
               "format": "date",
@@ -361,7 +372,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The account's matching transactions.",
+            "description": "The account's matching transactions and requested transfers.",
             "content": {
               "application/json": {
                 "schema": {
@@ -494,6 +505,120 @@
           },
           "404": {
             "$ref": "#/components/responses/TransactionNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        }
+      }
+    },
+    "/transfers": {
+      "post": {
+        "summary": "Record a cash transfer",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The transfer was recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transfer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransfer"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TransferNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/UnexpectedError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuthUnavailable"
+          }
+        },
+        "description": "Records one transfer that debits the source account and credits the destination account by the same SGD amount."
+      }
+    },
+    "/transfers/{transferId}": {
+      "patch": {
+        "summary": "Correct a cash transfer",
+        "description": "Replaces the source account, destination account, date, and amount while retaining the same transfer ID.",
+        "security": [
+          {
+            "supabaseAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transferId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The transfer was corrected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transfer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidTransfer"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TransferNotFound"
           },
           "500": {
             "$ref": "#/components/responses/UnexpectedError"
@@ -1008,6 +1133,13 @@
             "items": {
               "$ref": "#/components/schemas/Transaction"
             }
+          },
+          "transfers": {
+            "type": "array",
+            "description": "Present when includeTransfers=true.",
+            "items": {
+              "$ref": "#/components/schemas/TransferHistoryEntry"
+            }
           }
         },
         "required": [
@@ -1086,6 +1218,185 @@
             "enum": [
               "linked_activity"
             ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "TransferInput": {
+        "type": "object",
+        "description": "Source and destination must be distinct financial accounts owned by the authorised owner. The date must be on or after both opening dates.",
+        "properties": {
+          "sourceAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "destinationAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])[0-9]{1,12}(?:\\.[0-9]{1,2})?$",
+            "description": "Positive SGD amount with up to twelve whole digits and two decimal places."
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Gregorian calendar date on or after the selected account's opening date. Future dates are allowed."
+          }
+        },
+        "required": [
+          "sourceAccountId",
+          "destinationAccountId",
+          "amount",
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "Transfer": {
+        "type": "object",
+        "properties": {
+          "sourceAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "destinationAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Gregorian calendar date on or after the selected account's opening date. Future dates are allowed."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "sourceAccountId",
+          "destinationAccountId",
+          "amount",
+          "date",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "TransferHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "sourceAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "destinationAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?=.*[1-9])(?:0|[1-9][0-9]*)\\.[0-9]{2}$"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000-)(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Gregorian calendar date on or after the selected account's opening date. Future dates are allowed."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "incoming",
+              "outgoing"
+            ],
+            "description": "Direction relative to the financial account whose history was requested."
+          }
+        },
+        "required": [
+          "sourceAccountId",
+          "destinationAccountId",
+          "amount",
+          "date",
+          "id",
+          "direction"
+        ],
+        "additionalProperties": false
+      },
+      "TransferValidationError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "invalid_request"
+            ]
+          },
+          "fieldErrors": {
+            "type": "object",
+            "properties": {
+              "sourceAccountId": {
+                "type": "string"
+              },
+              "destinationAccountId": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "TransferNotFound": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_found"
+            ]
+          },
+          "fieldErrors": {
+            "type": "object",
+            "properties": {
+              "sourceAccountId": {
+                "type": "string"
+              },
+              "destinationAccountId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1263,6 +1574,26 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/LinkedAccountActivity"
+            }
+          }
+        }
+      },
+      "InvalidTransfer": {
+        "description": "The transfer is invalid. Field errors are supplied where available.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TransferValidationError"
+            }
+          }
+        }
+      },
+      "TransferNotFound": {
+        "description": "The transfer or one of its accounts is unavailable in the authorised workspace.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TransferNotFound"
             }
           }
         }

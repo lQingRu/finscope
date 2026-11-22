@@ -411,7 +411,7 @@ test("a recorded and corrected cash transfer updates both account histories and 
   await expectHistory(sourceAccountId, [{ ...updated, direction: "outgoing" }]);
   await expectHistory(destinationAccountId, [{ ...updated, direction: "incoming" }]);
 
-  const moved = await workspace.request("PATCH", transferUrl, { ...updated, id: undefined, destinationAccountId: finalDestination });
+  const moved = await workspace.request("PATCH", transferUrl, { ...input, amount: updated.amount, date: updated.date, destinationAccountId: finalDestination });
   assert.equal(moved.statusCode, 200, moved.body);
   const rejected = await workspace.request("PATCH", transferUrl, { ...input, destinationAccountId: sourceAccountId.toUpperCase() });
   assert.equal(rejected.statusCode, 400, rejected.body);
@@ -420,4 +420,180 @@ test("a recorded and corrected cash transfer updates both account histories and 
   await expectHistory(sourceAccountId, [{ ...updated, destinationAccountId: finalDestination, direction: "outgoing" }]);
   await expectHistory(destinationAccountId, []);
   await expectHistory(finalDestination, [{ ...updated, destinationAccountId: finalDestination, direction: "incoming" }]);
+});
+
+test("transfer validation and workspace rules preserve the saved transfer", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const other = await startWorkspace(onTestFinished);
+  const sourceAccountId = await workspace.openAccount({ openingDate: "2026-11-02" });
+  const destinationAccountId = await workspace.openAccount({ openingDate: "2026-11-04", openingBalance: "0" });
+  const foreignAccountId = await other.openAccount();
+  const input = { sourceAccountId, destinationAccountId, amount: "0.01", date: "2026-11-04" };
+
+  const created = await workspace.request("POST", "/transfers", input);
+  assert.equal(created.statusCode, 201, created.body);
+  const url = `/transfers/${created.json().id}`;
+  const historyUrl = `/financial-accounts/${sourceAccountId}/transactions?includeTransfers=true`;
+  const overviewUrl = "/financial-accounts?view=overview";
+  const originalOverview = (await workspace.request("GET", overviewUrl)).json();
+  const originalHistory = (await workspace.request("GET", historyUrl)).json();
+
+  for (const [method, endpoint] of [["POST", "/transfers"], ["PATCH", url]] as const) {
+    for (const [field, value] of [
+      ["sourceAccountId", "invalid"],
+      ["destinationAccountId", sourceAccountId],
+      ["date", "2026-11-31"],
+      ["date", "2026-11-03"],
+      ["amount", "0"],
+      ["amount", "-0.01"],
+      ["amount", "0.001"],
+      ["amount", "1000000000000"],
+    ] as const) {
+      const response = await workspace.request(method, endpoint, { ...input, [field]: value });
+      assert.equal(response.statusCode, 400, response.body);
+      assert.equal(typeof response.json().fieldErrors[field], "string", response.body);
+    }
+    for (const field of ["sourceAccountId", "destinationAccountId"] as const) {
+      const response = await workspace.request(method, endpoint, { ...input, [field]: foreignAccountId });
+      assert.equal(response.statusCode, 404, response.body);
+      assert.equal(typeof response.json().fieldErrors[field], "string", response.body);
+    }
+  }
+  assert.equal((await other.request("PATCH", url, { ...input, sourceAccountId: foreignAccountId })).statusCode, 404);
+  assert.equal((await other.request("GET", historyUrl)).statusCode, 404);
+  assert.deepEqual((await workspace.request("GET", overviewUrl)).json(), originalOverview);
+  assert.deepEqual((await workspace.request("GET", historyUrl)).json(), originalHistory);
+
+  const newSource = await workspace.openAccount({ name: "New source" });
+  const moved = await workspace.request("PATCH", url, { ...input, sourceAccountId: newSource });
+  assert.equal(moved.statusCode, 200, moved.body);
+  assert.deepEqual((await workspace.request("GET", historyUrl)).json().transfers, []);
+  const accounts = (await workspace.request("GET", overviewUrl)).json().accounts;
+  assert.equal(accounts.find(({ id }: { id: string }) => id === sourceAccountId).balance, "3000.00");
+  assert.equal(accounts.find(({ id }: { id: string }) => id === newSource).balance, "2999.99");
+});
+
+test("account activity dates, balances and history filters include both kinds of activity", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const sourceAccountId = await workspace.openAccount();
+  const destinationAccountId = await workspace.openAccount({ name: "Brokerage", openingBalance: "0" });
+  const income = await workspace.record(sourceAccountId, salary);
+  const expense = await workspace.record(sourceAccountId, groceries);
+  const input = { sourceAccountId, destinationAccountId, amount: "100", date: "2026-11-02" };
+  const created = await workspace.request("POST", "/transfers", input);
+  assert.equal(created.statusCode, 201, created.body);
+  const outgoing = { ...created.json(), direction: "outgoing" };
+  const historyPath = `/financial-accounts/${sourceAccountId}/transactions`;
+
+  for (const [query, expected] of [
+    ["", { transactions: [expense, income] }],
+    ["?includeTransfers=true", { transactions: [expense, income], transfers: [outgoing] }],
+    ["?includeTransfers=true&type=income", { transactions: [income], transfers: [] }],
+    ["?includeTransfers=true&category=Food", { transactions: [expense], transfers: [] }],
+    ["?includeTransfers=true&to=2026-11-02", { transactions: [], transfers: [outgoing] }],
+    ["?includeTransfers=true&from=2026-11-03", { transactions: [expense, income], transfers: [] }],
+  ] as const) {
+    const response = await workspace.request("GET", historyPath + query);
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json(), expected);
+  }
+
+  const overviewUrl = "/financial-accounts?from=2026-11-01&to=2026-11-30";
+  const overview = (await workspace.request("GET", overviewUrl)).json();
+  assert.equal(overview.summary.netCashflow, "400.00");
+  assert.equal(overview.summary.balance, "3400.00");
+  assert.deepEqual(Object.fromEntries(
+    overview.accounts.map(({ id, balance }: { id: string; balance: string }) => [id, balance]),
+  ), { [sourceAccountId]: "3300.00", [destinationAccountId]: "100.00" });
+
+  for (const [accountId, name, openingBalance] of [
+    [sourceAccountId, "Savings", "3000"],
+    [destinationAccountId, "Brokerage", "0"],
+  ]) {
+    const accountUrl = `/financial-accounts/${accountId}`;
+    assert.equal((await workspace.request("PATCH", accountUrl, {
+      name, openingBalance, openingDate: input.date,
+    })).statusCode, 200);
+    const rejected = await workspace.request("PATCH", accountUrl, {
+      name: "Changed", openingBalance: "1", openingDate: "2026-11-03",
+    });
+    assert.equal(rejected.statusCode, 400, rejected.body);
+    assert.match(rejected.json().openingDateError, /2026-11-02/);
+    const deletion = await workspace.request("DELETE", accountUrl);
+    assert.equal(deletion.statusCode, 409, deletion.body);
+    assert.deepEqual(deletion.json(), { status: "linked_activity" });
+    // A previously deployed API writes the account directly after checking only transactions.
+    await assert.rejects(workspace.pool.query(
+      "UPDATE finscope_private.financial_accounts SET opening_date = $1 WHERE owner_user_id = $2 AND id = $3",
+      ["2026-11-03", workspace.ownerUserId, accountId],
+    ), { code: "23514" });
+    const saved = (await workspace.request("GET", overviewUrl)).json().accounts.find(({ id }: { id: string }) => id === accountId);
+    assert.equal(saved.name, name);
+    assert.equal(saved.openingDate, input.date);
+    assert.equal(saved.earliestActivityDate, input.date);
+    assert.equal(saved.openingBalance, openingBalance + ".00");
+  }
+
+  assert.deepEqual((await workspace.request("GET", historyPath + "?includeTransfers=true")).json().transfers, [outgoing]);
+});
+
+test("concurrent transfer writes preserve opening-date and account deletion invariants", {
+  skip: !databaseUrl,
+}, async ({ onTestFinished }) => {
+  const workspace = await startWorkspace(onTestFinished);
+  const sourceAccountId = await workspace.openAccount();
+  const destinationAccountId = await workspace.openAccount({ name: "Brokerage", openingBalance: "0" });
+  const input = { sourceAccountId, destinationAccountId, amount: "10", date: "2026-11-02" };
+  const destinationUrl = `/financial-accounts/${destinationAccountId}`;
+  const olderAccountWriter = await workspace.pool.connect();
+
+  try {
+    await olderAccountWriter.query("BEGIN");
+    const { rows: [{ pid }] } = await olderAccountWriter.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+    await olderAccountWriter.query(
+      "UPDATE finscope_private.financial_accounts SET opening_date = $1 WHERE owner_user_id = $2 AND id = $3",
+      ["2026-11-03", workspace.ownerUserId, destinationAccountId],
+    );
+
+    let finished = false;
+    const recording = workspace.request("POST", "/transfers", input)
+      .then((response) => {
+        finished = true;
+        return response;
+      });
+    const deadline = Date.now() + 2000;
+    let waitedForOpeningDate = false;
+    while (!finished && Date.now() < deadline) {
+      const blocked = await workspace.pool.query(
+        "SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", [pid],
+      );
+      if (blocked.rowCount) {
+        waitedForOpeningDate = true;
+        break;
+      }
+      await delay(10);
+    }
+    await olderAccountWriter.query("COMMIT");
+
+    const response = await recording;
+    assert.equal(waitedForOpeningDate, true);
+    assert.equal(response.statusCode, 400, response.body);
+    assert.match(response.json().fieldErrors.date, /2026-11-03/);
+  } finally {
+    olderAccountWriter.release(true);
+  }
+
+  const [recorded, deleted] = await Promise.all([
+    workspace.request("POST", "/transfers", { ...input, date: "2026-11-03" }),
+    workspace.request("DELETE", destinationUrl),
+  ]);
+  assert.deepEqual([recorded.statusCode, deleted.statusCode], recorded.statusCode === 201 ? [201, 409] : [404, 204]);
+  const remaining = await workspace.request("GET", `/financial-accounts/${sourceAccountId}/transactions?includeTransfers=true`);
+  assert.equal(remaining.statusCode, 200, remaining.body);
+  assert.deepEqual(remaining.json().transfers, recorded.statusCode === 201
+    ? [{ ...recorded.json(), direction: "outgoing" }] : []);
 });

@@ -90,6 +90,9 @@ test("direct reads and writes reject missing and unverified tokens and another G
     });
     for (const [method, url] of [
       ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/transactions"],
+      ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/transactions?includeTransfers=true"],
+      ["POST", "/transfers"],
+      ["PATCH", "/transfers/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
       ["POST", "/transactions"],
       ["PATCH", "/transactions/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
     ] as const) {
