@@ -113,11 +113,11 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
   }
 
   return (
-    <section id="account-transaction-history" aria-labelledby={headingId} className="min-w-0 rounded-xl border border-[#d8e4db] bg-white p-5">
+    <section id="account-transaction-history" aria-labelledby={headingId} className="min-w-0 rounded-xl border border-line bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id={headingId} ref={heading} tabIndex={-1} className="text-lg font-semibold">Transaction history</h2>
-          <p className="mt-1 break-words text-sm text-[#495e55]">{account.label}</p>
+          <p className="mt-1 break-words text-sm text-muted">{account.label}</p>
         </div>
         <Button variant="outline" onClick={onClose}>Close history</Button>
       </div>
@@ -163,10 +163,10 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
           )}
         </div>
       </form>
-      {history.isPending && <p role="status" className="mt-4 text-sm text-[#495e55]">Loading transactions…</p>}
+      {history.isPending && <p role="status" className="mt-4 text-sm text-muted">Loading transactions…</p>}
       {history.isError && (
         <div className="mt-4">
-          <p role="alert" className="text-sm text-[#8f3023]">
+          <p role="alert" className="text-sm text-danger">
             {isAccessError(history.error)
               ? "Your session no longer has access. Sign out and try again."
               : history.error instanceof TransactionApiError && history.error.status === 404
@@ -177,14 +177,14 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
             && <Button variant="outline" className="mt-3" onClick={() => void history.refetch()}>Try again</Button>}
         </div>
       )}
-      {notice && <p role="status" className="mt-4 text-sm text-[#286347]">{notice}</p>}
+      {notice && <p role="status" className="mt-4 text-sm text-positive">{notice}</p>}
       {entries?.length === 0 && (
-        <p className="mt-4 border-t border-[#e0e8e2] pt-4 text-sm text-[#495e55]">
+        <p className="mt-4 border-t border-line pt-4 text-sm text-muted">
           {Object.keys(filters).length ? "No transactions match these filters." : "No transactions recorded for this account."}
         </p>
       )}
       {entries && entries.length > 0 && (
-        <ul className="mt-4 divide-y divide-[#e0e8e2] border-t border-[#e0e8e2]">
+        <ul className="mt-4 divide-y divide-line border-t border-line">
           {entries.map((entry) => {
             const isTransfer = "direction" in entry;
             const kind = isTransfer ? "transfer" : "transaction";
@@ -208,13 +208,13 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
                 <div className="grid items-start gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="min-w-0">
                     <p className="font-semibold break-words">{label}</p>
-                    <p className="mt-1 text-sm text-[#495e55]">
+                    <p className="mt-1 text-sm text-muted">
                       <time dateTime={entry.date}>{formatDate(entry.date)}</time> · {typeLabel}
                     </p>
                     {description && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{description}</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                    <span className={`font-semibold tabular-nums ${credit ? "text-[#286347]" : "text-[#8f3023]"}`}>
+                    <span className={`font-semibold tabular-nums ${credit ? "text-positive" : "text-danger"}`}>
                       {credit ? "+" : "−"}{formatSgd(entry.amount)}
                     </span>
                     <Button variant="outline" id={`edit-${kind}-${entry.id}`}
@@ -249,7 +249,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
         </ul>
       )}
       <dialog ref={deleteDialog} aria-labelledby={deleteTitle} aria-describedby={deleting ? deleteDescription : undefined}
-        className="m-auto w-full max-w-sm rounded-xl p-5 shadow-lg backdrop:bg-black/40"
+        className="ui-dialog"
         onCancel={(event) => { if (removal.isPending) event.preventDefault(); }}
         onClose={() => setDeleting(undefined)}>
         <h3 id={deleteTitle} className="font-semibold">Delete {deletingTransfer ? "transfer" : "transaction"}?</h3>
@@ -261,7 +261,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
               : <>Remove the {formatSgd(deleting.amount)} {deleting.type === "income" ? "income" : "expense"} on {formatDate(deleting.date)} from {account.label} and recalculate its balance and cashflow.</>}
           </p>
         )}
-        {removal.isError && <p role="alert" className="mb-3 text-sm text-[#8f3023]">
+        {removal.isError && <p role="alert" className="mb-3 text-sm text-danger">
           {isAccessError(removal.error)
             ? "Your session no longer has access. Sign out and try again."
             : removal.error instanceof AccountApiError && removal.error.fundingError

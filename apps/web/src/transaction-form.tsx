@@ -116,8 +116,8 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
 
   return (
     <section id={editing ? undefined : "record-transaction-form"} aria-labelledby={headingId} className={editing
-      ? "mt-4 border-t border-[#e0e8e2] pt-4"
-      : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-5 shadow-sm sm:p-6"}
+      ? "mt-4 border-t border-line pt-4"
+      : "ui-card p-5 sm:p-6"}
     >
       {editing
         ? <h4 id={headingId} className="font-semibold">Edit transaction</h4>
@@ -176,7 +176,7 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
           </div>
         </fieldset>
         {save.isError && !errorHasField && (
-          <p role="alert" className="mt-3 text-sm text-[#8f3023]">
+          <p role="alert" className="mt-3 text-sm text-danger">
             {isAccessError(save.error)
               ? "Your session no longer has access. Sign out and try again."
               : save.error instanceof AccountApiError && save.error.fundingError
@@ -186,7 +186,7 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
                   : "FinScope couldn’t confirm the save. Check the account history before trying again."}
           </p>
         )}
-        {notice && <p role="status" className="mt-3 text-sm text-[#286347]">{notice}</p>}
+        {notice && <p role="status" className="mt-3 text-sm text-positive">{notice}</p>}
       </form>
     </section>
   );

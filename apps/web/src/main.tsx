@@ -11,6 +11,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { auth } from "./auth";
 import { Button } from "./components/ui/button";
+import { Brand } from "./signed-in-shell";
 import { accountsQueryKey, Workspace } from "./workspace";
 import "./index.css";
 
@@ -81,40 +82,31 @@ function FinScope() {
     }
   }
 
+  if (session) {
+    return <Workspace key={session.user.id} session={session} signingOut={working}
+      onSignOut={() => void signOut()} signOutError={error} />;
+  }
+
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-[#dce6de] bg-white">
-        <div className="mx-auto flex min-h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-4 sm:px-8">
-          <div className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
-            <span aria-hidden="true" className="flex size-8 items-end justify-center gap-0.5 rounded-lg bg-[#17382f] p-2">
-              <span className="h-1.5 w-1 rounded-sm bg-[#c8e7d4]" />
-              <span className="h-2.5 w-1 rounded-sm bg-[#c8e7d4]" />
-              <span className="h-3.5 w-1 rounded-sm bg-[#c8e7d4]" />
-            </span>
-            FinScope
-          </div>
-          {session && (
-            <Button variant="outline" disabled={working} onClick={() => void signOut()}>
-              {working ? "Signing out…" : "Sign out"}
-            </Button>
-          )}
+      <header className="border-b border-line bg-surface">
+        <div className="mx-auto flex min-h-[4.25rem] max-w-6xl items-center px-4 sm:px-8">
+          <Brand />
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8 sm:py-11">
-        {error && <p role="alert" className="mb-4 text-sm text-[#8f3023]">{error}</p>}
+        {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
         {!auth ? (
-          <section className="mx-auto mt-12 max-w-md rounded-xl border border-[#d8e4db] bg-white p-6 shadow-sm sm:p-8">
+          <section className="mx-auto mt-12 max-w-md ui-card p-6 sm:p-8">
             <h1 className="text-2xl font-semibold">Sign-in unavailable</h1>
-            <p className="mt-3 text-sm text-[#495e55]">FinScope’s authentication configuration is missing or invalid.</p>
+            <p className="mt-3 text-sm text-muted">FinScope’s authentication configuration is missing or invalid.</p>
           </section>
         ) : session === undefined ? (
-          <p role="status" className="text-sm text-[#495e55]">Checking your session…</p>
-        ) : session ? (
-          <Workspace key={session.user.id} session={session} />
+          <p role="status" className="text-sm text-muted">Checking your session…</p>
         ) : (
-          <section className="mx-auto mt-12 max-w-md rounded-xl border border-[#d8e4db] bg-white p-6 shadow-sm sm:mt-20 sm:p-8">
+          <section className="mx-auto mt-12 max-w-md ui-card p-6 sm:mt-20 sm:p-8">
             <h1 className="text-2xl font-semibold tracking-tight">Sign in to FinScope</h1>
-            <p className="mt-3 text-sm leading-relaxed text-[#495e55]">Open your private financial workspace with the designated Google account.</p>
+            <p className="mt-3 text-sm leading-relaxed text-muted">Open your private financial workspace with the designated Google account.</p>
             <Button className="mt-6 w-full" disabled={working} onClick={() => void signIn()}>
               {working ? "Opening Google…" : "Continue with Google"}
             </Button>
