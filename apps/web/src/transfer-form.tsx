@@ -3,7 +3,7 @@ import { minimumTransferDate, transferAccountFields, transferBeforeOpeningMessag
 import type { Transfer, TransferInput } from "@finscope/contracts/transfers";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
 import { useForm } from "react-hook-form";
 import { AccountApiError, isAccessError } from "./account-api";
 import type { LabeledAccount } from "./account-labels";
@@ -31,17 +31,17 @@ type TransferFormProps = {
   accounts: LabeledAccount[];
   token: string;
   queryKey: readonly string[];
+  onStatusChange?: (dirty: boolean, saving: boolean) => void;
   onCancel: () => void;
 } & (
-  | { transfer?: undefined; onCorrected?: never }
-  | { transfer: Transfer; onCorrected: (saved: Transfer) => void }
+  | { transfer?: undefined; onCorrected?: never; onRecorded: () => void }
+  | { transfer: Transfer; onCorrected: (saved: Transfer) => void; onRecorded?: never }
 );
 
-export function TransferForm({ accounts, token, queryKey, transfer, onCancel, onCorrected }: TransferFormProps) {
+export function TransferForm({ accounts, token, queryKey, transfer, onCancel, onCorrected, onRecorded, onStatusChange }: TransferFormProps) {
   const client = useQueryClient();
   const id = useId();
-  const [notice, setNotice] = useState("");
-  const { register, handleSubmit, reset, setError, setFocus, watch, formState: { errors } } = useForm<TransferInput>({
+  const { register, handleSubmit, setError, setFocus, watch, formState: { errors, isDirty } } = useForm<TransferInput>({
     defaultValues: transfer ? {
       sourceAccountId: transfer.sourceAccountId,
       destinationAccountId: transfer.destinationAccountId,
@@ -68,15 +68,10 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
 
   const save = useMutation({
     mutationFn: (input: TransferInput) => saveTransfer(token, input, transfer?.id),
-    onMutate: () => setNotice(""),
     onSuccess: async (saved) => {
-      if (onCorrected) {
-        onCorrected(saved);
-      } else {
-        reset({ ...blankTransfer(), sourceAccountId: saved.sourceAccountId, destinationAccountId: saved.destinationAccountId });
-        setNotice("Transfer recorded.");
-      }
+      if (onCorrected) onCorrected(saved);
       await client.invalidateQueries({ queryKey });
+      onRecorded?.();
     },
     onError: async (error) => {
       if (error instanceof TransferApiError && error.fieldErrors) {
@@ -92,6 +87,10 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
       }
     },
   });
+  useEffect(() => {
+    onStatusChange?.(isDirty, save.isPending);
+  }, [isDirty, onStatusChange, save.isPending]);
+
   const fieldErrors = save.error instanceof TransferApiError ? save.error.fieldErrors : undefined;
   const headingId = editing ? id : "record-transfer-heading";
   const submitLabel = editing
@@ -141,7 +140,6 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
                   : "FinScope couldn’t confirm the save. Check the account history before trying again."}
           </p>
         )}
-        {notice && <p role="status" className="mt-3 text-sm text-positive">{notice}</p>}
       </form>
     </section>
   );

@@ -41,14 +41,15 @@ type TradeFormProps = {
   trade?: EtfTrade;
   onCancel: () => void;
   onSaved: (trade: EtfTrade) => void;
+  onStatusChange?: (dirty: boolean, saving: boolean) => void;
 };
 
-export function EtfTradeForm({ accounts, token, queryKey, trade, onCancel, onSaved }: TradeFormProps) {
+export function EtfTradeForm({ accounts, token, queryKey, trade, onCancel, onSaved, onStatusChange }: TradeFormProps) {
   const client = useQueryClient();
   const { today } = useSingaporeToday();
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
-  const { register, control, handleSubmit, formState: { errors }, setError, setFocus } = useForm<FormValues>({
+  const { register, control, handleSubmit, formState: { errors, isDirty }, setError, setFocus } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       currency: "SGD", accountId: trade?.accountId ?? (accounts.length === 1 ? accounts[0].id : ""),
@@ -61,7 +62,10 @@ export function EtfTradeForm({ accounts, token, queryKey, trade, onCancel, onSav
   const selectedAccount = useWatch({ control, name: "accountId" });
   const openingDate = accounts.find(({ id: accountId }) => accountId === selectedAccount)?.openingDate;
   const contextOnly = trade && !trade.canChangeFinancialDetails;
-  useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => {
+    if (trade) heading.current?.focus();
+    else setFocus("accountId");
+  }, [setFocus, trade]);
 
   const save = useMutation({
     mutationFn: (values: FormValues) => saveEtfTrade(token, { ...values, tags: parseTags(values.tags) }, trade?.id),
@@ -76,6 +80,10 @@ export function EtfTradeForm({ accounts, token, queryKey, trade, onCancel, onSav
       }
     },
   });
+  useEffect(() => {
+    onStatusChange?.(isDirty, save.isPending);
+  }, [isDirty, onStatusChange, save.isPending]);
+
   const saveError = save.error instanceof EtfTradeApiError ? save.error : undefined;
   const title = trade ? (contextOnly ? "Edit investment context" : "Edit ETF trade") : "Record an ETF trade";
   const headingId = trade ? id : "record-etf-trade-heading";
