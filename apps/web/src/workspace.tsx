@@ -520,14 +520,14 @@ export function Workspace({ session, signingOut, onSignOut, signOutError }: {
             else setHoldingsId(id);
           }} />
           {selectedBrokerage && (
-            <BrokerageHoldings key={selectedBrokerage.id} account={selectedBrokerage} token={token} queryKey={queryKey}
+            <BrokerageHoldings key={`holdings-${selectedBrokerage.id}`} account={selectedBrokerage} token={token} queryKey={queryKey}
               onClose={() => {
                 setHoldingsId(undefined);
                 document.getElementById(`holdings-${selectedBrokerage.id}`)?.focus();
               }} />
           )}
           {selectedAccount && (
-            <TransactionHistory key={selectedAccount.id} account={selectedAccount} accounts={ownedAccounts}
+            <TransactionHistory key={`history-${selectedAccount.id}`} account={selectedAccount} accounts={ownedAccounts}
               token={token} queryKey={queryKey}
               onClose={() => {
                 setHistoryId(undefined);

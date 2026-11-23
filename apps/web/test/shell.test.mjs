@@ -83,6 +83,9 @@ async function openWorkspace(t, { viewport, signedIn = true, accountsStatus = 20
     if (accounts.some(({ id }) => path === `/financial-accounts/${id}/holdings`)) {
       return route.fulfill({ json: { holdings: [], trades: [] } });
     }
+    if (accounts.some(({ id }) => path === `/financial-accounts/${id}/transactions`)) {
+      return route.fulfill({ json: { transactions: [], transfers: [] } });
+    }
     if (path === "/portfolio") {
       return route.fulfill({ json: {
         currency: "SGD", knownSubtotal: accounts[0]?.balance ?? "0.00",
@@ -245,6 +248,31 @@ test("opens and closes holdings for a long brokerage account name with the keybo
     await heading.waitFor({ state: "hidden" });
     await open.and(page.locator(":focus")).waitFor();
   }
+});
+
+test("closes holdings independently of transaction history for the same brokerage account", async (t) => {
+  const name = "ETF brokerage";
+  const page = await openWorkspace(t, { accounts: [{
+    id: "50000000-0000-4000-8000-000000000003",
+    name, openingDate: "2026-06-01", type: "brokerage", currency: "SGD",
+    openingBalance: "0.00", balance: "0.00", earliestActivityDate: null,
+  }] });
+  const history = page.getByRole("heading", { name: "Transaction history" });
+  const holdings = page.getByRole("heading", { name: `${name} holdings` });
+  const openHoldings = page.getByRole("button", { name: `View holdings for ${name}` });
+
+  await page.getByRole("button", { name: `View history for ${name}` }).press("Enter");
+  await history.and(page.locator(":focus")).waitFor();
+  const filter = page.getByLabel("Filter by type");
+  await filter.selectOption("income");
+  await openHoldings.press("Enter");
+  await holdings.and(page.locator(":focus")).waitFor();
+  await history.waitFor();
+  await page.getByRole("button", { name: "Close holdings" }).press("Enter");
+  await holdings.waitFor({ state: "hidden" });
+  await openHoldings.and(page.locator(":focus")).waitFor();
+  await history.waitFor();
+  assert.equal(await filter.inputValue(), "income");
 });
 
 test("shows the Google sign-in screen to a signed-out visitor", async (t) => {
