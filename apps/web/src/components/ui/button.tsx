@@ -2,14 +2,14 @@ import { cva } from "class-variance-authority";
 import type { VariantProps } from "class-variance-authority";
 import type { ComponentProps } from "react";
 
-// Based on the shadcn/ui Button, with the workspace's two variants.
+// Based on the shadcn/ui Button, with the workspace button styles.
 const buttonVariants = cva(
-  "inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f705e] disabled:cursor-not-allowed disabled:opacity-55",
+  "ui-button",
   {
     variants: {
       variant: {
-        default: "bg-[#17382f] text-white hover:bg-[#245144]",
-        outline: "border border-[#ccd8d1] bg-white text-[#18372e] hover:bg-[#f1f6f2]",
+        default: "bg-accent text-on-accent enabled:hover:bg-accent-hover",
+        outline: "border border-control bg-surface text-ink enabled:hover:bg-surface-muted",
       },
     },
     defaultVariants: { variant: "default" },

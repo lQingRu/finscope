@@ -1,10 +1,17 @@
 import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
-import type { CSSProperties } from "react";
 import { useId, useRef } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import { Button } from "./components/ui/button";
 import { useSingaporeToday } from "./use-singapore-today";
+
+const calendarLabel = new Intl.DateTimeFormat("en-SG", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 function calendarDay(value: string) {
   return new Date(`${value}T12:00:00Z`);
@@ -33,10 +40,14 @@ export function OpeningDateCalendar({ value, onSelect, earliestActivityDate }: {
         dialog.current?.showModal();
       }}>Choose date</Button>
       <dialog ref={dialog} aria-labelledby={titleId}
-        className="m-auto max-h-[90dvh] max-w-[calc(100%-1rem)] overflow-auto rounded-xl p-4 shadow-lg backdrop:bg-black/40">
+        className="ui-dialog calendar-dialog">
         <h3 id={titleId} className="mb-3 font-semibold">Choose opening date</h3>
         <DayPicker
-          style={{ "--rdp-day-width": "38px", "--rdp-day_button-width": "36px" } as CSSProperties}
+          className="opening-date-calendar"
+          labels={{
+            labelDayButton: (date, { today, selected }) =>
+              `${today ? "Today, " : ""}${calendarLabel.format(date)}${selected ? ", selected" : ""}`,
+          }}
           key={selected?.toISOString() ?? "no-date"}
           mode="single"
           timeZone="UTC"

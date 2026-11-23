@@ -82,7 +82,7 @@ export function EtfTradeForm({ accounts, token, queryKey, trade, onCancel, onSav
 
   return (
     <section id={trade ? undefined : "record-etf-trade-form"} aria-labelledby={headingId}
-      className={trade ? "mt-4 border-t border-[#e0e8e2] pt-4" : "min-w-0 rounded-xl border border-[#d8e4db] bg-white p-5 shadow-sm sm:p-6"}>
+      className={trade ? "mt-4 border-t border-line pt-4" : "ui-card p-5 sm:p-6"}>
       <h3 ref={heading} tabIndex={-1} id={headingId} className="text-lg font-semibold">{title}</h3>
       <form noValidate className="mt-4" onSubmit={handleSubmit((values) => {
         if (openingDate && values.date < openingDate) {
@@ -152,7 +152,7 @@ export function EtfTradeForm({ accounts, token, queryKey, trade, onCancel, onSav
             {(attributes) => <textarea {...attributes} rows={3} maxLength={2000} {...register("notes")} />}
           </FormField>
           {save.isError && !Object.keys(saveError?.fieldErrors ?? {}).length && (
-            <p role="alert" className="text-sm text-[#8f3023]">
+            <p role="alert" className="text-sm text-danger">
               {isAccessError(save.error) ? "Your session no longer has access. Sign out and try again."
                 : saveError?.detail ?? (saveError?.status === 404
                   ? "This trade or brokerage account is no longer available."
