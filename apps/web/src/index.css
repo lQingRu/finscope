@@ -729,3 +729,47 @@ body:has(.navigation-drawer[open]) {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+.quick-action-dialog {
+  position: fixed;
+  inline-size: min(36rem, calc(100% - 2rem));
+  max-inline-size: none;
+  padding: 0;
+  overscroll-behavior: contain;
+}
+
+.quick-action-dialog > section {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.quick-action-dialog > section > :is(h2, h3) {
+  padding-inline-end: 3rem;
+}
+
+.quick-action-close {
+  position: absolute;
+  inset-block-start: var(--ui-gap-3);
+  inset-inline-end: var(--ui-gap-3);
+}
+
+:root:has(.quick-action-dialog[open]) {
+  overflow: hidden;
+}
+
+@media (min-width: 40rem) {
+  :root { scrollbar-gutter: stable; }
+}
+
+@media (width < 40rem) {
+  .quick-action-dialog {
+    inset: 0;
+    margin: 0;
+    inline-size: 100%;
+    block-size: 100dvh;
+    max-block-size: none;
+    border: 0;
+    border-radius: 0;
+  }
+}

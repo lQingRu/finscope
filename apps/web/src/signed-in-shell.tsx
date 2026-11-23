@@ -28,6 +28,14 @@ function PrimaryNavigation({ onNavigate }: { onNavigate?: () => void }) {
         </svg>
         <span className="primary-link-label">Overview</span>
       </Link>
+      <Link to="/accounts" activeOptions={{ exact: true, includeSearch: false }}
+        activeProps={{ "aria-current": "page" }} className="primary-link" onClick={onNavigate}>
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+          <path d="M4 7h15a1 1 0 0 1 1 1v11H4a1 1 0 0 1-1-1V7a2 2 0 0 1 2-2h12" />
+          <path d="M20 11h-5a2 2 0 0 0 0 4h5" />
+        </svg>
+        <span className="primary-link-label">Accounts</span>
+      </Link>
     </nav>
   );
 }
@@ -147,7 +155,7 @@ export function SignedInShell({ title, children, contextualActions, quickActions
                 <path d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h1>{title}</h1>
+            <h1 id="workspace-title" tabIndex={-1}>{title}</h1>
           </div>
           <div className="shell-actions">
             {contextualActions}

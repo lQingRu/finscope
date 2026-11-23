@@ -1,4 +1,3 @@
-import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
 import {
   defaultTransactionCategory,
   transactionBeforeOpeningMessage,
@@ -8,7 +7,7 @@ import {
 import type { Transaction, TransactionInput } from "@finscope/contracts/transactions";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { AccountApiError, isAccessError } from "./account-api";
 import type { LabeledAccount } from "./account-labels";
@@ -30,22 +29,22 @@ type TransactionFormProps = {
   accounts: LabeledAccount[];
   token: string;
   queryKey: readonly string[];
+  onStatusChange?: (dirty: boolean, saving: boolean) => void;
 } & (
-  | { transaction?: undefined; onCancel: () => void; onCorrected?: never }
-  | { transaction: Transaction; onCancel: () => void; onCorrected: (saved: Transaction) => void }
+  | { transaction?: undefined; onCancel: () => void; onCorrected?: never; onRecorded: () => void }
+  | { transaction: Transaction; onCancel: () => void; onCorrected: (saved: Transaction) => void; onRecorded?: never }
 );
 
-export function TransactionForm({ accounts, token, queryKey, transaction, onCancel, onCorrected }: TransactionFormProps) {
+export function TransactionForm({ accounts, token, queryKey, transaction, onCancel, onCorrected, onRecorded, onStatusChange }: TransactionFormProps) {
   const client = useQueryClient();
   const id = useId();
-  const [notice, setNotice] = useState("");
   const { today } = useSingaporeToday();
   const dateChanged = useRef(false);
   const automaticDate = useRef(today);
   const dateInput = useRef<HTMLInputElement>(null);
   const initialAccount = accounts.length === 1 ? accounts[0].id : "";
   const {
-    control, register, handleSubmit, reset, resetField, setError, setFocus, setValue, watch, formState: { errors },
+    control, register, handleSubmit, resetField, setError, setFocus, setValue, watch, formState: { errors, isDirty },
   } = useForm<TransactionInput>({
     defaultValues: transaction
       ? {
@@ -81,17 +80,10 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
 
   const save = useMutation({
     mutationFn: (input: TransactionInput) => saveTransaction(token, input, transaction?.id),
-    onMutate: () => setNotice(""),
     onSuccess: async (saved) => {
-      if (onCorrected) {
-        onCorrected(saved);
-      } else {
-        dateChanged.current = false;
-        automaticDate.current = singaporeCalendarDate();
-        reset(blankTransaction(saved.accountId, automaticDate.current));
-        setNotice("Transaction recorded.");
-      }
+      if (onCorrected) onCorrected(saved);
       await client.invalidateQueries({ queryKey });
+      onRecorded?.();
     },
     onError: async (error) => {
       if (error instanceof TransactionApiError && error.fieldErrors) {
@@ -107,6 +99,10 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
       }
     },
   });
+  useEffect(() => {
+    onStatusChange?.(isDirty, save.isPending);
+  }, [isDirty, onStatusChange, save.isPending]);
+
   const fieldErrors = save.error instanceof TransactionApiError ? save.error.fieldErrors : undefined;
   const errorHasField = transactionFields.some((name) => fieldErrors?.[name]);
   const headingId = editing ? id : "record-transaction-heading";
@@ -186,7 +182,6 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
                   : "FinScope couldn’t confirm the save. Check the account history before trying again."}
           </p>
         )}
-        {notice && <p role="status" className="mt-3 text-sm text-positive">{notice}</p>}
       </form>
     </section>
   );

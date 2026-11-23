@@ -120,10 +120,21 @@ function FinScope() {
 const rootRoute = createRootRoute({ component: Outlet });
 const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/",
+  id: "workspace",
   component: FinScope,
 });
-const router = createRouter({ routeTree: rootRoute.addChildren([workspaceRoute]) });
+const overviewRoute = createRoute({ getParentRoute: () => workspaceRoute, path: "/" });
+const accountsRoute = createRoute({
+  getParentRoute: () => workspaceRoute,
+  path: "/accounts",
+  validateSearch: (search: Record<string, unknown>): { open?: boolean; holdings?: string } => ({
+    open: search.open === true || undefined,
+    holdings: typeof search.holdings === "string" ? search.holdings : undefined,
+  }),
+});
+const router = createRouter({
+  routeTree: rootRoute.addChildren([workspaceRoute.addChildren([overviewRoute, accountsRoute])]),
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
