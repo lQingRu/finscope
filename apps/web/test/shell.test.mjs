@@ -80,6 +80,9 @@ async function openWorkspace(t, { viewport, signedIn = true, accountsStatus = 20
       } });
     }
     if (path === "/financial-accounts") return route.fulfill({ status: accountsStatus, json: {} });
+    if (accounts.some(({ id }) => path === `/financial-accounts/${id}/holdings`)) {
+      return route.fulfill({ json: { holdings: [], trades: [] } });
+    }
     if (path === "/portfolio") {
       return route.fulfill({ json: {
         currency: "SGD", knownSubtotal: accounts[0]?.balance ?? "0.00",
@@ -130,6 +133,20 @@ test("keeps keyboard focus within mobile navigation and returns it on dismissal"
   await close.press("Enter");
   await drawer.waitFor({ state: "hidden" });
   await trigger.and(page.locator(":focus")).waitFor();
+});
+
+test("moves keyboard focus to desktop navigation when an open drawer becomes a sidebar", async (t) => {
+  const page = await openWorkspace(t, { viewport: { width: 390, height: 844 } });
+  const trigger = page.getByRole("button", { name: "Open navigation" });
+  const drawer = page.getByRole("dialog", { name: "Navigation" });
+
+  await trigger.press("Enter");
+  await drawer.getByRole("button", { name: "Close navigation" }).and(page.locator(":focus")).waitFor();
+  await page.setViewportSize({ width: 1024, height: 844 });
+  await drawer.waitFor({ state: "hidden" });
+  const overview = page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Overview" });
+  await overview.and(page.locator(":focus")).waitFor();
+  assert.equal(await overview.getAttribute("aria-current"), "page");
 });
 
 test("signs out with the keyboard from the profile disclosure and stays signed out on reload", async (t) => {
@@ -200,6 +217,33 @@ test("keeps account names, exact balances and row actions available across viewp
     await row.getByText("SGD 999,999,999,999.9912345678901234", { exact: true }).waitFor();
     await row.getByRole("button", { name: `View history for ${name}` }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+  }
+});
+
+test("opens and closes holdings for a long brokerage account name with the keyboard without overflowing", async (t) => {
+  const name = "W".repeat(100);
+  const page = await openWorkspace(t, {
+    accounts: [{
+      id: "50000000-0000-4000-8000-000000000003",
+      name, openingDate: "2026-06-01", type: "brokerage", currency: "SGD",
+      openingBalance: "0.00", balance: "0.00", earliestActivityDate: null,
+    }],
+  });
+  const open = page.getByRole("button", { name: `View holdings for ${name}` });
+  const heading = page.getByRole("heading", { name: `${name} holdings`, exact: true });
+  const close = page.getByRole("button", { name: "Close holdings" });
+
+  for (const width of [320, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open.press("Enter");
+    await heading.and(page.locator(":focus")).waitFor();
+    await page.getByText("No ETF trades recorded in this brokerage account.").waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width, `Page width at ${width}px`);
+    await page.keyboard.press("Tab");
+    await close.and(page.locator(":focus")).waitFor();
+    await page.keyboard.press("Enter");
+    await heading.waitFor({ state: "hidden" });
+    await open.and(page.locator(":focus")).waitFor();
   }
 });
 

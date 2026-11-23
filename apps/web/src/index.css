@@ -171,9 +171,19 @@
 }
 
 .primary-link[aria-current="page"] {
+  position: relative;
   color: var(--ui-accent-text);
   background: var(--ui-accent-soft);
   font-weight: 650;
+}
+
+.primary-link[aria-current="page"]::before {
+  position: absolute;
+  inset-block: 25%;
+  inset-inline-start: 0;
+  border-inline-start: 3px solid currentColor;
+  border-radius: 3px;
+  content: "";
 }
 
 .sidebar-toggle {
@@ -226,6 +236,10 @@
     display: flex;
     flex-direction: column;
     height: 100dvh;
+  }
+
+  .icon-button.mobile-nav-trigger {
+    display: none;
   }
 
   .app-shell[data-collapsed="true"] .sidebar-brand,
@@ -306,12 +320,6 @@ body:has(.navigation-drawer[open]) {
   padding-inline: var(--ui-gap-3) 0;
   border-bottom: 1px solid var(--ui-border);
   font-weight: 650;
-}
-
-@media (min-width: 64rem) {
-  .mobile-nav-trigger {
-    display: none;
-  }
 }
 
 .header-disclosure {
@@ -547,12 +555,15 @@ body:has(.navigation-drawer[open]) {
   }
 
   .ui-table > thead > tr > th:first-child {
-    width: 39%;
     border-start-start-radius: calc(var(--ui-radius-card) - 1px);
   }
 
-  .ui-table > thead > tr > th:nth-child(2) {
-    width: 24%;
+  .account-name-column {
+    inline-size: 39%;
+  }
+
+  .account-balance-column {
+    inline-size: 24%;
   }
 
   .ui-table > thead > tr > th:last-child {

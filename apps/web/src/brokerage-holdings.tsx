@@ -131,7 +131,7 @@ export function BrokerageHoldings({ account, token, queryKey, onClose }: Holding
     <section id="brokerage-holdings" aria-labelledby="brokerage-holdings-heading"
       className="ui-card p-5 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 id="brokerage-holdings-heading" ref={heading} tabIndex={-1} className="break-words text-lg font-semibold">
+        <h2 id="brokerage-holdings-heading" ref={heading} tabIndex={-1} className="min-w-0 [overflow-wrap:anywhere] text-lg font-semibold">
           {account.label} holdings
         </h2>
         <Button variant="outline" onClick={onClose}>Close holdings</Button>

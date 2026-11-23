@@ -1,5 +1,5 @@
 import { OpeningDateCalendar } from "./opening-date-calendar";
-import { accountOpeningAfterActivityMessage, accountTypes, correctFinancialAccount, currentSingaporeMonth, customReportingPeriod } from "@finscope/contracts/financial-accounts";
+import { accountOpeningAfterActivityMessage, accountTypes, correctFinancialAccount, currentSingaporeMonth, customReportingPeriod, zeroSgd } from "@finscope/contracts/financial-accounts";
 import type { AccountWithBalance, CorrectFinancialAccount, FinancialAccount, ReportingPeriod } from "@finscope/contracts/financial-accounts";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Session } from "@supabase/supabase-js";
@@ -164,8 +164,8 @@ function AccountList({ accounts, token, queryKey, historyId, onHistory, holdings
           <table aria-labelledby="accounts-heading" role="table" className="ui-table">
             <thead role="rowgroup">
               <tr role="row">
-                <th scope="col" role="columnheader">Account</th>
-                <th scope="col" role="columnheader">Current balance</th>
+                <th scope="col" role="columnheader" className="account-name-column">Account</th>
+                <th scope="col" role="columnheader" className="account-balance-column">Current balance</th>
                 <th scope="col" role="columnheader">Actions</th>
               </tr>
             </thead>
@@ -423,6 +423,19 @@ export function Workspace({ session, signingOut, onSignOut, signOutError }: {
   const transferFormVisible = canRecordTransfer && showTransferForm;
   const tradeFormVisible = canRecordTrade && showTradeForm;
   const hasOpenForm = transactionFormVisible || transferFormVisible || tradeFormVisible || showAccountForm;
+
+  function openForm(closeActions: () => void, headingId: string, setVisible: (visible: boolean) => void) {
+    closeActions();
+    const heading = document.getElementById(headingId);
+    if (heading) heading.focus();
+    else setVisible(true);
+  }
+
+  function closeForm(setVisible: (visible: boolean) => void) {
+    setVisible(false);
+    quickActionsButton.current?.focus();
+  }
+
   const quickActions = (
     <HeaderDisclosure label="Quick actions" triggerRef={quickActionsButton} triggerClassName="quick-actions-trigger" trigger={
       <>
@@ -434,35 +447,21 @@ export function Workspace({ session, signingOut, onSignOut, signOutError }: {
         <>
           {canRecordTransaction && (
             <button type="button" className="header-popover-action"
-              onClick={() => {
-                close();
-                if (transactionFormVisible) document.getElementById("record-transaction-heading")?.focus();
-                else setShowTransactionForm(true);
-              }}>Record a transaction</button>
+              onClick={() => openForm(close, "record-transaction-heading", setShowTransactionForm)}>Record a transaction</button>
           )}
           {canRecordTransfer && (
             <button type="button" className="header-popover-action"
-              onClick={() => {
-                close();
-                if (transferFormVisible) document.getElementById("record-transfer-heading")?.focus();
-                else setShowTransferForm(true);
-              }}>Transfer cash</button>
+              onClick={() => openForm(close, "record-transfer-heading", setShowTransferForm)}>Transfer cash</button>
           )}
           {canRecordTrade && (
             <button type="button" className="header-popover-action"
               onClick={() => {
-                close();
                 setTradeNotice("");
-                if (tradeFormVisible) document.getElementById("record-etf-trade-heading")?.focus();
-                else setShowTradeForm(true);
+                openForm(close, "record-etf-trade-heading", setShowTradeForm);
               }}>Record an ETF trade</button>
           )}
           <button type="button" className="header-popover-action"
-            onClick={() => {
-              close();
-              if (showAccountForm) document.getElementById("open-account-heading")?.focus();
-              else setShowAccountForm(true);
-            }}>Open a financial account</button>
+            onClick={() => openForm(close, "open-account-heading", setShowAccountForm)}>Open a financial account</button>
         </>
       )}
     </HeaderDisclosure>
@@ -484,9 +483,9 @@ export function Workspace({ session, signingOut, onSignOut, signOutError }: {
         </div>
         <dl className="summary-metrics">
           <Metric label="Total cash balance" featured>{formatPreciseSgd(summary.balance)}</Metric>
-          <Metric label="Income" tone={summary.income === "0.00" ? undefined : "positive"}>{formatSgd(summary.income)}</Metric>
-          <Metric label="Expenses" tone={summary.expenses === "0.00" ? undefined : "negative"}>{formatSgd(summary.expenses)}</Metric>
-          <Metric label="Net cashflow" tone={summary.netCashflow === "0.00" ? undefined : summary.netCashflow.startsWith("-") ? "negative" : "positive"}>
+          <Metric label="Income" tone={summary.income === zeroSgd ? undefined : "positive"}>{formatSgd(summary.income)}</Metric>
+          <Metric label="Expenses" tone={summary.expenses === zeroSgd ? undefined : "negative"}>{formatSgd(summary.expenses)}</Metric>
+          <Metric label="Net cashflow" tone={summary.netCashflow === zeroSgd ? undefined : summary.netCashflow.startsWith("-") ? "negative" : "positive"}>
             {formatSgd(summary.netCashflow)}
           </Metric>
         </dl>
@@ -540,30 +539,18 @@ export function Workspace({ session, signingOut, onSignOut, signOutError }: {
         {hasOpenForm && (
           <div className="grid min-w-0 gap-6">
             {transactionFormVisible && <TransactionForm accounts={ownedAccounts} token={token} queryKey={queryKey}
-              onCancel={() => {
-                setShowTransactionForm(false);
-                quickActionsButton.current?.focus();
-              }} />}
+              onCancel={() => closeForm(setShowTransactionForm)} />}
             {transferFormVisible && <TransferForm accounts={ownedAccounts} token={token} queryKey={queryKey}
-              onCancel={() => {
-                setShowTransferForm(false);
-                quickActionsButton.current?.focus();
-              }} />}
+              onCancel={() => closeForm(setShowTransferForm)} />}
             {tradeFormVisible && <EtfTradeForm accounts={brokerageAccounts} token={token} queryKey={queryKey}
-              onCancel={() => {
-                setShowTradeForm(false);
-                quickActionsButton.current?.focus();
-              }}
+              onCancel={() => closeForm(setShowTradeForm)}
               onSaved={(trade) => {
                 setShowTradeForm(false);
                 setTradeNotice(`${trade.ticker} ${trade.type} recorded.`);
                 setHoldingsId(trade.accountId);
                 if (trade.accountId === holdingsId) document.getElementById("brokerage-holdings-heading")?.focus();
               }} />}
-            {showAccountForm && <AccountForm token={token} queryKey={queryKey} onCancel={() => {
-              setShowAccountForm(false);
-              quickActionsButton.current?.focus();
-            }} />}
+            {showAccountForm && <AccountForm token={token} queryKey={queryKey} onCancel={() => closeForm(setShowAccountForm)} />}
           </div>
         )}
       </div>

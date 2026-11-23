@@ -46,18 +46,21 @@ export function SignedInShell({ title, children, contextualActions, quickActions
   const sidebarId = useId();
   const drawerId = useId();
   const drawerTitleId = useId();
+  const desktopSidebar = useRef<HTMLElement>(null);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
   const drawer = useRef<HTMLDialogElement>(null);
   const drawerTrigger = useRef<HTMLButtonElement>(null);
   const drawerClose = useRef<HTMLButtonElement>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 64rem)");
-    function resize() {
-      if (desktop.matches) drawer.current?.close();
-    }
-    desktop.addEventListener("change", resize);
-    return () => desktop.removeEventListener("change", resize);
+    const sidebar = desktopSidebar.current;
+    if (!sidebar) return;
+    const observer = new ResizeObserver(() => {
+      if (drawer.current?.open && sidebar.getClientRects().length) drawer.current.close();
+    });
+    observer.observe(sidebar);
+    return () => observer.disconnect();
   }, []);
 
   function openDrawer() {
@@ -69,10 +72,11 @@ export function SignedInShell({ title, children, contextualActions, quickActions
   return (
     <div className="app-shell" data-collapsed={collapsed}>
       <a className="skip-link" href="#workspace-main">Skip to main content</a>
-      <aside id={sidebarId} className="desktop-sidebar">
+      <aside id={sidebarId} ref={desktopSidebar} className="desktop-sidebar">
         <div className="sidebar-brand"><Brand /></div>
         <PrimaryNavigation />
         <button
+          ref={sidebarToggle}
           type="button"
           className="sidebar-toggle"
           aria-controls={sidebarId}
@@ -94,7 +98,13 @@ export function SignedInShell({ title, children, contextualActions, quickActions
         aria-labelledby={drawerTitleId}
         onClose={() => {
           setDrawerOpen(false);
-          drawerTrigger.current?.focus();
+          const sidebar = desktopSidebar.current;
+          if (sidebar?.getClientRects().length) {
+            const currentLink = sidebar.querySelector<HTMLAnchorElement>('a[aria-current="page"]');
+            (currentLink ?? sidebarToggle.current)?.focus();
+          } else {
+            drawerTrigger.current?.focus();
+          }
         }}
         onKeyDown={(event) => {
           if (event.key !== "Tab") return;
