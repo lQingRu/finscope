@@ -264,9 +264,11 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
         {removal.isError && <p role="alert" className="mb-3 text-sm text-[#8f3023]">
           {isAccessError(removal.error)
             ? "Your session no longer has access. Sign out and try again."
-            : removal.error instanceof AccountApiError && removal.error.status === 404
-              ? "This entry is no longer available."
-              : "FinScope couldn’t confirm the deletion. Check the account history before trying again."}
+            : removal.error instanceof AccountApiError && removal.error.fundingError
+              ? removal.error.fundingError
+              : removal.error instanceof AccountApiError && removal.error.status === 404
+                ? "This entry is no longer available."
+                : "FinScope couldn’t confirm the deletion. Check the account history before trying again."}
         </p>}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" autoFocus disabled={removal.isPending} onClick={() => deleteDialog.current?.close()}>Cancel</Button>

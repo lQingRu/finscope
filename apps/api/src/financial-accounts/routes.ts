@@ -16,6 +16,8 @@ import type {
 } from "@finscope/contracts/financial-accounts";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import type { EtfTradeRepository } from "../etf-trades/repository.ts";
+import { registerEtfTradeRoutes } from "../etf-trades/routes.ts";
 import type { AuthorizeOwner } from "./authorization.ts";
 import { registerTransactionRoutes } from "../transactions/routes.ts";
 import type { TransactionRepository } from "../transactions/routes.ts";
@@ -38,6 +40,7 @@ export type FinancialAccountsOptions = {
   authorize: AuthorizeOwner;
   repository: FinancialAccountRepository;
   transferRepository: TransferRepository;
+  etfTradeRepository?: EtfTradeRepository;
 };
 
 const accountParams = z.object({ accountId: z.uuid() });
@@ -52,7 +55,7 @@ function invalidAccountInput(error: z.ZodError) {
 
 export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions> = async (
   api,
-  { authorize, repository, transferRepository },
+  { authorize, repository, transferRepository, etfTradeRepository },
 ) => {
   api.decorateRequest("workspaceOwnerId", null);
   api.addHook("onRequest", async (request, reply) => {
@@ -86,6 +89,7 @@ export const financialAccountRoutes: FastifyPluginAsync<FinancialAccountsOptions
 
   registerTransactionRoutes(api, repository);
   registerTransferRoutes(api, transferRepository);
+  if (etfTradeRepository) registerEtfTradeRoutes(api, etfTradeRepository);
 
   api.post("/financial-accounts", async (request, reply) => {
     const input = openFinancialAccount.safeParse(request.body);

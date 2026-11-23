@@ -1,6 +1,6 @@
 import { transactionResponses } from "@finscope/contracts/transactions";
 import type { TransactionFieldErrors, TransactionHistoryQuery, TransactionInput } from "@finscope/contracts/transactions";
-import { AccountApiError, apiUrl } from "./account-api";
+import { AccountApiError, apiUrl, tradeFundingApiError } from "./account-api";
 
 export class TransactionApiError extends AccountApiError {
   constructor(status: number, readonly fieldErrors?: TransactionFieldErrors) {
@@ -26,6 +26,7 @@ export async function saveTransaction(token: string, input: TransactionInput, tr
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+  if (response.status === 409) throw await tradeFundingApiError(response);
   if (response.status === 400 || response.status === 404) {
     const body = transactionResponses.record[response.status].safeParse(await response.json().catch(() => null));
     throw new TransactionApiError(response.status, body.data?.fieldErrors);
@@ -38,5 +39,6 @@ export async function saveTransaction(token: string, input: TransactionInput, tr
 export async function deleteActivity(token: string, kind: "transaction" | "transfer", id: string) {
   const url = new URL(`/${kind}s/${encodeURIComponent(id)}`, apiUrl);
   const response = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  if (response.status === 409) throw await tradeFundingApiError(response);
   if (response.status !== 204) throw new AccountApiError(response.status);
 }

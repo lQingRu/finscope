@@ -9,7 +9,8 @@
     "./financial-accounts": "./financial-accounts.ts",
     "./transactions": "./transactions.ts",
     "./positive-sgd": "./positive-sgd.ts",
-    "./transfers": "./transfers.ts"
+    "./transfers": "./transfers.ts",
+    "./etf-trades": "./etf-trades.ts"
   },
   "dependencies": {
     "zod": "^4.3.0"

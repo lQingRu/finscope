@@ -3,10 +3,13 @@ import type { TransferHistoryEntry } from "@finscope/contracts/transfers";
 import { and, asc, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { retainDeletedActivity } from "../audit/activity-deletions.ts";
+import { assertSavedTradesFunded } from "../etf-trades/cash.ts";
+import { etfTrades } from "../etf-trades/table.ts";
 import type { TransactionWriteResult } from "../transactions/routes.ts";
 import { transactions } from "../transactions/table.ts";
 import { transferColumns, transfers } from "../transfers/table.ts";
 import { lockOwnerActivity } from "./activity-lock.ts";
+import { transactionCashMovement, transferCashMovement } from "./cash-movements.ts";
 import type { FinancialAccountRepository } from "./routes.ts";
 import { summarizeFinancialAccounts } from "./summary.ts";
 import { accounts } from "./table.ts";
@@ -47,10 +50,10 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
     return db.transaction(async (write) => {
       await lockOwnerActivity(write, ownerUserId);
       const transactionScope = transactionId && and(eq(transactions.ownerUserId, ownerUserId), eq(transactions.id, transactionId));
-      if (transactionScope) {
-        const [existing] = await write.select({ id: transactions.id }).from(transactions).where(transactionScope);
-        if (!existing) return { status: "not_found" };
-      }
+      const [existing] = transactionScope
+        ? await write.select({ accountId: transactions.accountId }).from(transactions).where(transactionScope)
+        : [];
+      if (transactionScope && !existing) return { status: "not_found" };
       // An older API can still update this account without taking the workspace advisory lock.
       const [account] = await write.select({ openingDate: accounts.openingDate }).from(accounts)
         .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, input.accountId))).for("share");
@@ -61,6 +64,9 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
       const [transaction] = transactionScope
         ? await write.update(transactions).set(values).where(transactionScope).returning(transactionColumns)
         : await write.insert(transactions).values(values).returning(transactionColumns);
+      const affectedAccounts = [input.accountId];
+      if (existing) affectedAccounts.push(existing.accountId);
+      await assertSavedTradesFunded(write, ownerUserId, affectedAccounts);
       return { status: "saved", transaction };
     }, { isolationLevel: "read committed" });
   }
@@ -71,19 +77,24 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
       // Keep the outer account ID qualified in the lateral subquery's select list.
       const transferActivity = db.select({
         earliestDate: sql<string | null>`min(${transfers.date})`.as("earliest_date"),
-        net: sql<string>`coalesce(sum(case when ${transfers.destinationAccountId} = "financial_accounts"."id"
-          then ${transfers.amount} else -${transfers.amount} end), 0)`.as("net"),
+        net: sql<string>`coalesce(sum(${transferCashMovement(sql`"financial_accounts"."id"`)}), 0)`.as("net"),
       }).from(transfers).where(linkedTransfers(accounts.ownerUserId, accounts.id)).as("transfer_activity");
+      const tradeActivity = db.select({
+        earliestDate: sql<string | null>`min(${etfTrades.date})`.as("earliest_trade_date"),
+        net: sql<string>`coalesce(sum(${etfTrades.cashMovement}), 0)`.as("trade_net"),
+      }).from(etfTrades).where(and(
+        eq(etfTrades.ownerUserId, accounts.ownerUserId), eq(etfTrades.accountId, accounts.id),
+      )).as("trade_activity");
       const rows = await db.select({
         ...publicColumns,
-        earliestActivityDate: sql<string | null>`least(min(${transactions.date}), ${transferActivity.earliestDate})::text`,
-        net: sql<string>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amount} else -${transactions.amount} end), 0) + ${transferActivity.net}`,
+        earliestActivityDate: sql<string | null>`least(min(${transactions.date}), ${transferActivity.earliestDate}, ${tradeActivity.earliestDate})::text`,
+        net: sql<string>`coalesce(sum(${transactionCashMovement}), 0) + ${transferActivity.net} + ${tradeActivity.net}`,
         income: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'income' and ${duringPeriod}), 0)`,
         expenses: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'expense' and ${duringPeriod}), 0)`,
       }).from(accounts).leftJoin(transactions, and(
         eq(transactions.ownerUserId, accounts.ownerUserId), eq(transactions.accountId, accounts.id),
-      )).leftJoinLateral(transferActivity, sql`true`).where(eq(accounts.ownerUserId, ownerUserId))
-        .groupBy(accounts.id, transferActivity.earliestDate, transferActivity.net)
+      )).leftJoinLateral(transferActivity, sql`true`).leftJoinLateral(tradeActivity, sql`true`).where(eq(accounts.ownerUserId, ownerUserId))
+        .groupBy(accounts.id, transferActivity.earliestDate, transferActivity.net, tradeActivity.earliestDate, tradeActivity.net)
         .orderBy(asc(accounts.openingDate), asc(accounts.name), asc(accounts.id));
       return summarizeFinancialAccounts(rows.map((row) => ({ ...row, currency: "SGD" })), period);
     },
@@ -123,6 +134,7 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
           .where(and(eq(transactions.ownerUserId, ownerUserId), eq(transactions.id, transactionId))).returning();
         if (!removed) return "not_found";
 
+        await assertSavedTradesFunded(write, ownerUserId, [removed.accountId]);
         await retainDeletedActivity(write, "transaction", removed);
         return "deleted";
       }, { isolationLevel: "read committed" });
@@ -157,7 +169,10 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
           .orderBy(asc(transactions.date)).limit(1);
         const [transfer] = await write.select({ date: transfers.date }).from(transfers)
           .where(linkedTransfers(ownerUserId, accountId)).orderBy(asc(transfers.date)).limit(1);
-        const [earliestActivityDate] = [activity?.date, transfer?.date].filter((date) => date !== undefined).sort();
+        const [trade] = await write.select({ date: etfTrades.date }).from(etfTrades)
+          .where(and(eq(etfTrades.ownerUserId, ownerUserId), eq(etfTrades.accountId, accountId)))
+          .orderBy(asc(etfTrades.date)).limit(1);
+        const [earliestActivityDate] = [activity?.date, transfer?.date, trade?.date].filter((date) => date !== undefined).sort();
         if (earliestActivityDate && openingDate > earliestActivityDate) {
           return { status: "after_activity", activityDate: earliestActivityDate };
         }
@@ -165,7 +180,9 @@ export function createFinancialAccountRepository(db: NodePgDatabase): FinancialA
         const [row] = await write.update(accounts).set({ name, openingDate, openingBalance })
           .where(and(eq(accounts.ownerUserId, ownerUserId), eq(accounts.id, accountId)))
           .returning(publicColumns);
-        return row ? { status: "saved", account: { ...row, currency: "SGD" } } : { status: "not_found" };
+        if (!row) return { status: "not_found" };
+        await assertSavedTradesFunded(write, ownerUserId, [accountId]);
+        return { status: "saved", account: { ...row, currency: "SGD" } };
       }, { isolationLevel: "read committed" });
     },
   };

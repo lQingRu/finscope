@@ -1,8 +1,10 @@
 import cors from "@fastify/cors";
 import { apiErrorResponses } from "@finscope/contracts/api-errors";
+import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { healthResponses } from "@finscope/contracts/health";
 import Fastify, { LogController } from "fastify";
 import { z } from "zod";
+import { TradeFundingError } from "./etf-trades/cash.ts";
 import { financialAccountRoutes } from "./financial-accounts/routes.ts";
 import type { FinancialAccountsOptions } from "./financial-accounts/routes.ts";
 
@@ -38,6 +40,9 @@ export async function createApi({ checkDatabase, corsOrigin, reportError, accoun
   });
 
   api.setErrorHandler((error, request, reply) => {
+    if (error instanceof TradeFundingError) {
+      return reply.code(409).send(tradeFundingConflict.parse(error.conflict));
+    }
     if (error instanceof Error && "statusCode" in error) {
       const status = error.statusCode;
       if (typeof status === "number" && status >= 400 && status < 500) {
