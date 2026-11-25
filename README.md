@@ -1,5 +1,5 @@
 # FinScope
 
-The [initial MVP technology stack and deployment architecture](docs/adr/0001-initial-mvp-stack.md) governs specifications and implementation tickets for the first SGD milestone.
+FinScope brings personal financial records together so the owner can track cash, everyday activity, and ETF holdings. See the [product requirements and implementation status](docs/product-requirements.md) and the [current architecture](docs/architecture.md).
 
-See [local development](docs/deployment.md#local-development) to run the application. The [GitHub Actions and release guide](docs/deployment.md#release-and-verify) explains what CI checks before merge, how to deploy, and when to verify the live application.
+See [local development](docs/deployment.md#local-development) to run the application, [testing and verification](docs/standards/testing.md) for check commands, and the [release guide](docs/deployment.md#release-and-verify) to deploy and verify the live application. The [engineering playbook index](docs/standards/playbook/README.md) records the standards and skills used here.

@@ -1,3 +1,11 @@
+## Project guidance
+
+- Product scope and implementation status → [Product requirements](docs/product-requirements.md).
+- Runtime, module boundaries, and persistence → [Architecture](docs/architecture.md).
+- Engineering standards and skill dependencies → [Playbook index](docs/standards/playbook/README.md).
+- Test commands, browser checks, and CI → [Testing and verification](docs/standards/testing.md).
+- For an agreed one-ticket pairing workflow, invoke `$pair-implement` with the issue identifier.
+
 ## Agent skills
 
 ### Issue tracker

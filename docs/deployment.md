@@ -15,11 +15,7 @@ test -e apps/web/.env || cp apps/web/.env.example apps/web/.env
 
 Follow [Configure Google and bootstrap the owner](#configure-google-and-bootstrap-the-owner) with a development Supabase Auth project. Fill in the project values and owner IDs in the local environment files.
 
-Start `pnpm --filter @finscope/api dev` and `pnpm --filter @finscope/web dev` in separate terminals. Open [the local site](http://localhost:5173) or check the API at `http://localhost:3000/health`. The health endpoint returns HTTP 200 with `{"status":"ok"}` when the API can query PostgreSQL and HTTP 503 with `{"status":"unavailable"}` when the database is unavailable. The API applies Drizzle migrations before it listens. See the [OpenAPI contract](openapi.json). Run the API and PostgreSQL integration checks against the local database with:
-
-```sh
-FINSCOPE_TEST_DATABASE_URL=postgresql://finscope:finscope@127.0.0.1:5432/finscope pnpm check
-```
+Start `pnpm --filter @finscope/api dev` and `pnpm --filter @finscope/web dev` in separate terminals. Open [the local site](http://localhost:5173) or check the API at `http://localhost:3000/health`. The health endpoint returns HTTP 200 with `{"status":"ok"}` when the API can query PostgreSQL and HTTP 503 with `{"status":"unavailable"}` when the database is unavailable. The API applies Drizzle migrations before it listens. See the [OpenAPI contract](openapi.json) and [local verification commands](standards/testing.md#local-checks).
 
 ## Provision production
 
@@ -80,9 +76,7 @@ The [Verify and deploy workflow](../.github/workflows/deployment.yml) runs diffe
 
 ### Before merge
 
-Open a pull request and wait for the **verify** job to pass before merging. The job installs dependencies from the lockfile, starts PostgreSQL on the runner, runs `pnpm check` to type-check the frontend and API and run the API tests, and builds the application. It also builds and starts the API Docker image and checks that `/health` reports a working database connection.
-
-CI uses a disposable PostgreSQL database and test authentication fixtures. The current workflow provides verification on the runner and a separate production deployment. Testing real Google sign-in against a deployed branch before merge would require a separate staging environment.
+Open a pull request and wait for the **verify** job to pass before merging. See [CI and live verification](standards/testing.md#ci-and-live-verification) for the checks the job runs and the separate browser and owner checks.
 
 ### Deploy from main
 
