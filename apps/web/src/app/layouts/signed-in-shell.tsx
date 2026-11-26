@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { HeaderDisclosure } from "./components/ui/header-disclosure";
+import { HeaderDisclosure } from "./header-disclosure";
 
 export function Brand() {
   return (

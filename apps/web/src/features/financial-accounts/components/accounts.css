@@ -1,0 +1,144 @@
+.account-table-card {
+  container-type: inline-size;
+}
+
+.ui-table {
+  inline-size: 100%;
+  table-layout: fixed;
+  font-size: var(--ui-size-control);
+}
+
+.ui-table > :is(thead, tbody) > tr > :is(th, td) {
+  min-width: 0;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.ui-table > :is(thead, tbody) > tr > th {
+  font-weight: 650;
+}
+
+.ui-table > thead {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ui-table > tbody,
+.ui-table > tbody > tr {
+  display: grid;
+}
+
+.ui-table > tbody > tr {
+  gap: var(--ui-gap-3);
+  padding: var(--ui-gap-4);
+}
+
+.ui-table > tbody > tr + tr {
+  border-top: 1px solid var(--ui-border);
+}
+
+.account-name-cell h3 {
+  font-weight: 650;
+}
+
+.account-detail {
+  margin-top: var(--ui-gap-1);
+  color: var(--ui-text-muted);
+  font-weight: 400;
+}
+
+.table-mobile-label {
+  display: block;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-size-caption);
+  font-weight: 600;
+}
+
+.account-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-gap-2);
+}
+
+@container (min-width: 43rem) {
+  .ui-table > tbody {
+    display: table-row-group;
+  }
+
+  .ui-table > tbody > tr {
+    display: table-row;
+  }
+
+  .ui-table > thead {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    overflow: visible;
+    clip-path: none;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface-muted);
+  }
+
+  .ui-table > thead > tr > th {
+    padding: var(--ui-gap-3) var(--ui-gap-4);
+    font-size: var(--ui-size-caption);
+  }
+
+  .ui-table > thead > tr > th:first-child {
+    border-start-start-radius: calc(var(--ui-radius-card) - 1px);
+  }
+
+  .account-name-column {
+    inline-size: 39%;
+  }
+
+  .account-balance-column {
+    inline-size: 24%;
+  }
+
+  .ui-table > thead > tr > th:last-child {
+    border-start-end-radius: calc(var(--ui-radius-card) - 1px);
+  }
+
+  .ui-table > tbody > tr > :is(th, td) {
+    padding: var(--ui-gap-4);
+    vertical-align: top;
+  }
+
+  .table-mobile-label {
+    display: none;
+  }
+}
+
+.calendar-dialog {
+  inline-size: max-content;
+  max-inline-size: calc(100% - 1rem);
+  padding: var(--ui-gap-3);
+}
+
+.opening-date-calendar.rdp-root {
+  --rdp-accent-color: var(--ui-accent);
+  --rdp-accent-background-color: var(--ui-accent-soft);
+  --rdp-day-height: 2.375rem;
+  --rdp-day-width: 2.375rem;
+  --rdp-day_button-height: 2.25rem;
+  --rdp-day_button-width: 2.25rem;
+  --rdp-selected-border: 2px solid var(--ui-accent);
+  margin-bottom: var(--ui-gap-3);
+}
+
+.opening-date-calendar .rdp-weekday {
+  color: var(--ui-text-muted);
+  opacity: 1;
+}
+
+.opening-date-calendar .rdp-day_button:focus-visible,
+.opening-date-calendar :is(.rdp-button_previous, .rdp-button_next):focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
+}

@@ -6,12 +6,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { AccountApiError, isAccessError } from "./account-api";
-import type { LabeledAccount } from "./account-labels";
-import { Button } from "./components/ui/button";
-import { formatDate, formatSgd } from "./financial-format";
-import { FormField } from "./form-field";
-import { deleteActivity, listTransactions, TransactionApiError } from "./transaction-api";
+import type { LabeledAccount } from "../../financial-accounts/account-labels";
+import { ApiError, isAccessError } from "../../../shared/lib/api-error";
+import { Button } from "../../../shared/ui/button";
+import { formatDate, formatSgd } from "../../../shared/utils/financial-format";
+import { FormField } from "../../../shared/ui/form-field";
+import { ActivityFundingError, deleteActivity, listTransactions, TransactionApiError } from "../api/activity-api";
 import { TransactionForm } from "./transaction-form";
 import { TransferForm } from "./transfer-form";
 
@@ -22,7 +22,7 @@ const historyFilterForm = z.preprocess(
 );
 type HistoryEditor = { kind: "transaction" | "transfer"; id: string };
 
-export function TransactionHistory({ account, accounts, token, queryKey, onClose }: {
+export function AccountActivityHistory({ account, accounts, token, queryKey, onClose }: {
   account: LabeledAccount;
   accounts: LabeledAccount[];
   token: string;
@@ -55,7 +55,7 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
       heading.current?.focus();
     },
     onError: async (error) => {
-      if (isAccessError(error) || (error instanceof AccountApiError && error.status === 404)) {
+      if (isAccessError(error) || (error instanceof ApiError && error.status === 404)) {
         await queryClient.invalidateQueries({ queryKey });
       }
     },
@@ -264,16 +264,16 @@ export function TransactionHistory({ account, accounts, token, queryKey, onClose
         {removal.isError && <p role="alert" className="mb-3 text-sm text-danger">
           {isAccessError(removal.error)
             ? "Your session no longer has access. Sign out and try again."
-            : removal.error instanceof AccountApiError && removal.error.fundingError
+            : removal.error instanceof ActivityFundingError && removal.error.fundingError
               ? removal.error.fundingError
-              : removal.error instanceof AccountApiError && removal.error.status === 404
+              : removal.error instanceof ApiError && removal.error.status === 404
                 ? "This entry is no longer available."
                 : "FinScope couldn’t confirm the deletion. Check the account history before trying again."}
         </p>}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" autoFocus disabled={removal.isPending} onClick={() => deleteDialog.current?.close()}>Cancel</Button>
           <Button disabled={removal.isPending || !deleting ||
-            (removal.error instanceof AccountApiError && removal.error.status === 404)}
+            (removal.error instanceof ApiError && removal.error.status === 404)}
             onClick={() => { if (deleting) removal.mutate(deleting); }}>
             {removal.isPending ? "Deleting…" : deletingTransfer ? "Delete transfer" : "Delete transaction"}
           </Button>

@@ -2,8 +2,8 @@ import { singaporeCalendarDate } from "@finscope/contracts/financial-accounts";
 import { useId, useRef } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
-import { Button } from "./components/ui/button";
-import { useSingaporeToday } from "./use-singapore-today";
+import { Button } from "../../../shared/ui/button";
+import { useSingaporeToday } from "../../../shared/hooks/use-singapore-today";
 
 const calendarLabel = new Intl.DateTimeFormat("en-SG", {
   weekday: "long",

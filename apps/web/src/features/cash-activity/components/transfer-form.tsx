@@ -5,11 +5,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId } from "react";
 import { useForm } from "react-hook-form";
-import { AccountApiError, isAccessError } from "./account-api";
-import type { LabeledAccount } from "./account-labels";
-import { Button } from "./components/ui/button";
-import { FormField } from "./form-field";
-import { saveTransfer, TransferApiError } from "./transfer-api";
+import type { LabeledAccount } from "../../financial-accounts/account-labels";
+import { isAccessError } from "../../../shared/lib/api-error";
+import { Button } from "../../../shared/ui/button";
+import { FormField } from "../../../shared/ui/form-field";
+import { ActivityFundingError, saveTransfer, TransferApiError } from "../api/activity-api";
 
 const editableFields = [...transferAccountFields, "amount", "date"] as const;
 const accountSelectors = [
@@ -133,7 +133,7 @@ export function TransferForm({ accounts, token, queryKey, transfer, onCancel, on
           <p role="alert" className="mt-3 text-sm text-danger">
             {isAccessError(save.error)
               ? "Your session no longer has access. Sign out and try again."
-              : save.error instanceof AccountApiError && save.error.fundingError
+              : save.error instanceof ActivityFundingError && save.error.fundingError
                 ? save.error.fundingError
                 : save.error instanceof TransferApiError && save.error.status === 404
                   ? "This transfer is no longer available."

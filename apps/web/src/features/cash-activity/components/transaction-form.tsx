@@ -9,12 +9,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { AccountApiError, isAccessError } from "./account-api";
-import type { LabeledAccount } from "./account-labels";
-import { Button } from "./components/ui/button";
-import { FormField } from "./form-field";
-import { saveTransaction, TransactionApiError } from "./transaction-api";
-import { useSingaporeToday } from "./use-singapore-today";
+import type { LabeledAccount } from "../../financial-accounts/account-labels";
+import { isAccessError } from "../../../shared/lib/api-error";
+import { Button } from "../../../shared/ui/button";
+import { FormField } from "../../../shared/ui/form-field";
+import { ActivityFundingError, saveTransaction, TransactionApiError } from "../api/activity-api";
+import { useSingaporeToday } from "../../../shared/hooks/use-singapore-today";
 
 const transactionFields = ["accountId", "type", "amount", "date", "category", "description"] as const;
 
@@ -175,7 +175,7 @@ export function TransactionForm({ accounts, token, queryKey, transaction, onCanc
           <p role="alert" className="mt-3 text-sm text-danger">
             {isAccessError(save.error)
               ? "Your session no longer has access. Sign out and try again."
-              : save.error instanceof AccountApiError && save.error.fundingError
+              : save.error instanceof ActivityFundingError && save.error.fundingError
                 ? save.error.fundingError
                 : save.error instanceof TransactionApiError && save.error.status === 404
                   ? "This transaction is no longer available."

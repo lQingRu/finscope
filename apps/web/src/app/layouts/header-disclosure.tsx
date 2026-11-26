@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
-import { Button } from "./button";
+import { Button } from "../../shared/ui/button";
 
 export function HeaderDisclosure({ label, trigger, triggerClassName, triggerRef, children }: {
   label: string;

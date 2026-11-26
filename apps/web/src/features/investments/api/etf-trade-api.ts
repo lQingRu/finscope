@@ -1,8 +1,9 @@
 import { etfTradeResponses } from "@finscope/contracts/etf-trades";
 import type { EtfTradeFieldErrors, EtfTradeInput } from "@finscope/contracts/etf-trades";
-import { AccountApiError, apiUrl } from "./account-api";
+import { apiUrl } from "../../../config/env";
+import { ApiError } from "../../../shared/lib/api-error";
 
-export class EtfTradeApiError extends AccountApiError {
+export class EtfTradeApiError extends ApiError {
   constructor(status: number, readonly fieldErrors?: EtfTradeFieldErrors, readonly detail?: string) {
     super(status);
   }

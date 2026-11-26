@@ -5,12 +5,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
-import { isAccessError } from "./account-api";
-import type { LabeledAccount } from "./account-labels";
-import { Button } from "./components/ui/button";
-import { EtfTradeApiError, saveEtfTrade } from "./etf-trade-api";
-import { FormField } from "./form-field";
-import { useSingaporeToday } from "./use-singapore-today";
+import { isAccessError } from "../../../shared/lib/api-error";
+import type { LabeledAccount } from "../../financial-accounts/account-labels";
+import { Button } from "../../../shared/ui/button";
+import { EtfTradeApiError, saveEtfTrade } from "../api/etf-trade-api";
+import { FormField } from "../../../shared/ui/form-field";
+import { useSingaporeToday } from "../../../shared/hooks/use-singapore-today";
 
 const formSchema = etfTradeInput.omit({ tags: true }).extend({
   tags: z.string().refine((text) => etfTradeInput.shape.tags.safeParse(parseTags(text)).success,

@@ -1,12 +1,12 @@
 import { useBlocker, useLocation } from "@tanstack/react-router";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import type { LabeledAccount } from "./account-labels";
-import { Button } from "./components/ui/button";
-import { HeaderDisclosure } from "./components/ui/header-disclosure";
-import { EtfTradeForm } from "./etf-trade-form";
-import { TransactionForm } from "./transaction-form";
-import { TransferForm } from "./transfer-form";
+import type { LabeledAccount } from "../features/financial-accounts/account-labels";
+import { Button } from "../shared/ui/button";
+import { HeaderDisclosure } from "./layouts/header-disclosure";
+import { EtfTradeForm } from "../features/investments/components/etf-trade-form";
+import { TransactionForm } from "../features/cash-activity/components/transaction-form";
+import { TransferForm } from "../features/cash-activity/components/transfer-form";
 
 const actions = {
   transaction: { label: "Record a transaction", headingId: "record-transaction-heading" },

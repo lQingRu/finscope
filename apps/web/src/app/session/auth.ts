@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabasePublishableKey, supabaseUrl } from "../../config/env";
 
 function configureAuth(): SupabaseClient | undefined {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const url = supabaseUrl;
+  const key = supabasePublishableKey;
   if (!url || !/^sb_publishable_[a-zA-Z0-9_-]+$/.test(key ?? "")) {
     return undefined;
   }

@@ -1,19 +1,14 @@
-import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { financialAccountErrors, financialAccountResponses } from "@finscope/contracts/financial-accounts";
 import type { CorrectFinancialAccount, OpenFinancialAccount, ReportingPeriod } from "@finscope/contracts/financial-accounts";
+import { apiUrl } from "../../../config/env";
+import { ApiError } from "../../../shared/lib/api-error";
 
-export const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 const endpoint = new URL("/financial-accounts", apiUrl);
 
-export class AccountApiError extends Error {
-  constructor(readonly status: number, readonly openingDateError?: string, readonly fundingError?: string) {
-    super(`Account API returned ${status}`);
+export class AccountApiError extends ApiError {
+  constructor(status: number, readonly openingDateError?: string, readonly fundingError?: string) {
+    super(status);
   }
-}
-
-export async function tradeFundingApiError(response: Response) {
-  const body = tradeFundingConflict.safeParse(await response.json().catch(() => null));
-  return new AccountApiError(response.status, undefined, body.data?.message);
 }
 
 export async function listAccounts(token: string, period: ReportingPeriod | undefined, signal: AbortSignal) {
@@ -40,7 +35,10 @@ async function saveAccount(
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (response.status === 409) throw await tradeFundingApiError(response);
+  if (response.status === 409) {
+    const body = financialAccountResponses.correct[409].safeParse(await response.json().catch(() => null));
+    throw new AccountApiError(409, undefined, body.data?.message);
+  }
   if (response.status === 400) {
     const body = financialAccountErrors[400].safeParse(await response.json().catch(() => null));
     throw new AccountApiError(400, body.data?.openingDateError);
@@ -70,8 +68,4 @@ export async function deleteAccount(token: string, accountId: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (response.status !== 204) throw new AccountApiError(response.status);
-}
-
-export function isAccessError(error: unknown) {
-  return error instanceof AccountApiError && [401, 403].includes(error.status);
 }

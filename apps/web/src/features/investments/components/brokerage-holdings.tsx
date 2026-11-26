@@ -1,12 +1,12 @@
 import type { EtfHolding, EtfTrade } from "@finscope/contracts/etf-trades";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import { isAccessError } from "./account-api";
-import type { LabeledAccount } from "./account-labels";
-import { Button } from "./components/ui/button";
-import { deleteEtfTrade, EtfTradeApiError, getBrokerageHoldings } from "./etf-trade-api";
+import { isAccessError } from "../../../shared/lib/api-error";
+import type { LabeledAccount } from "../../financial-accounts/account-labels";
+import { Button } from "../../../shared/ui/button";
+import { deleteEtfTrade, EtfTradeApiError, getBrokerageHoldings } from "../api/etf-trade-api";
 import { EtfTradeForm } from "./etf-trade-form";
-import { formatDate, formatSgd, formatPreciseSgd } from "./financial-format";
+import { formatDate, formatSgd, formatPreciseSgd } from "../../../shared/utils/financial-format";
 
 type HoldingProps = {
   account: LabeledAccount;
