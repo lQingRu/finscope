@@ -6,7 +6,9 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "node --env-file-if-exists=.env --watch src/index.ts",
     "start": "node --env-file-if-exists=.env --enable-source-maps dist/index.js",
-    "test": "vitest run test/*.test.ts",
+    "test": "vitest run test/*.unit.test.ts test/*.int.test.ts",
+    "test:unit": "vitest run test/*.unit.test.ts",
+    "test:integration": "vitest run test/*.int.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
