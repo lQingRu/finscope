@@ -8,8 +8,12 @@ import { test, vi } from "vitest";
 import { createApi } from "../src/app/create-api.ts";
 import { migrateDatabase } from "../src/infrastructure/postgres.ts";
 import { createOwnerAuthorizer } from "../src/infrastructure/supabase-owner-auth.ts";
-import { createFinancialAccountRepository } from "../src/financial-accounts/repository.ts";
-import { createTransferRepository } from "../src/transfers/repository.ts";
+import { createFinancialAccountRepository } from "../src/financial-accounts/financial-accounts.repository.ts";
+import { createFinancialAccountService } from "../src/financial-accounts/financial-accounts.service.ts";
+import { createTransactionRepository } from "../src/transactions/transactions.repository.ts";
+import { createTransactionService } from "../src/transactions/transactions.service.ts";
+import { createTransferRepository } from "../src/transfers/transfers.repository.ts";
+import { createTransferService } from "../src/transfers/transfers.service.ts";
 
 const databaseUrl = process.env.FINSCOPE_TEST_DATABASE_URL;
 const googleSubject = "123456789012345678901";
@@ -38,10 +42,11 @@ async function startWorkspace(
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
     reportError,
-    accounts: {
+    workspace: {
       authorize,
-      repository: createFinancialAccountRepository(db),
-      transferRepository: createTransferRepository(db),
+      financialAccountService: createFinancialAccountService(createFinancialAccountRepository(db)),
+      transactionService: createTransactionService(createTransactionRepository(db)),
+      transferService: createTransferService(createTransferRepository(db)),
     },
   });
   onFinish(() => app.close());

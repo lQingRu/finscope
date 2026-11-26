@@ -52,18 +52,27 @@ test("direct reads and writes reject missing and unverified tokens and another G
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
     reportError: assert.fail,
-    accounts: {
+    workspace: {
       authorize,
-      transferRepository: {
+      etfTradeService: {
+        recordTrade: async () => assert.fail("Unauthorized trade write reached storage"),
+        updateTrade: async () => assert.fail("Unauthorized trade correction reached storage"),
+        deleteTrade: async () => assert.fail("Unauthorized trade deletion reached storage"),
+        readHoldings: async () => assert.fail("Unauthorized holdings read reached storage"),
+        readPortfolio: async () => assert.fail("Unauthorized portfolio read reached storage"),
+      },
+      transferService: {
         deleteTransfer: async () => assert.fail("Unexpected transfer deletion reached storage"),
         recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
         correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
       },
-      repository: {
+      transactionService: {
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
         deleteTransaction: async () => assert.fail("Unexpected transaction deletion reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
+      },
+      financialAccountService: {
         delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => assert.fail("Unauthorized request reached storage"),
         open: async () => assert.fail("Unauthorized request reached storage"),
@@ -72,6 +81,10 @@ test("direct reads and writes reject missing and unverified tokens and another G
     },
   });
   onTestFinished(() => app.close());
+
+  const health = await app.inject({ method: "GET", url: "/health" });
+  assert.equal(health.statusCode, 200);
+  assert.deepEqual(health.json(), { status: "ok" });
 
   for (const [authorization, status] of [
     [undefined, 401],
@@ -95,6 +108,11 @@ test("direct reads and writes reject missing and unverified tokens and another G
     for (const [method, url] of [
       ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/transactions"],
       ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/transactions?includeTransfers=true"],
+      ["GET", "/financial-accounts/b13ea6d0-f915-4d8d-9998-48084e0cd60d/holdings"],
+      ["GET", "/portfolio"],
+      ["POST", "/etf-trades"],
+      ["PATCH", "/etf-trades/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
+      ["DELETE", "/etf-trades/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
       ["POST", "/transfers"],
       ["PATCH", "/transfers/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
       ["DELETE", "/transfers/b13ea6d0-f915-4d8d-9998-48084e0cd60d"],
@@ -129,8 +147,12 @@ test("an owner can correct an account in place and see the new opening balance a
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const { Pool } = await import("pg");
   const { migrateDatabase } = await import("../src/infrastructure/postgres.ts");
-  const { createFinancialAccountRepository } = await import("../src/financial-accounts/repository.ts");
-  const { createTransferRepository } = await import("../src/transfers/repository.ts");
+  const { createFinancialAccountRepository } = await import("../src/financial-accounts/financial-accounts.repository.ts");
+  const { createFinancialAccountService } = await import("../src/financial-accounts/financial-accounts.service.ts");
+  const { createTransactionRepository } = await import("../src/transactions/transactions.repository.ts");
+  const { createTransactionService } = await import("../src/transactions/transactions.service.ts");
+  const { createTransferRepository } = await import("../src/transfers/transfers.repository.ts");
+  const { createTransferService } = await import("../src/transfers/transfers.service.ts");
   const workspaceOwner = randomUUID();
   function sessionHeaders(userId: string) {
     const token = `test.${Buffer.from(JSON.stringify({
@@ -156,18 +178,23 @@ test("an owner can correct an account in place and see the new opening balance a
     }, async () => Response.json(providerUser(userId, ownerGoogleSubject)));
 
     const db = drizzle(pool);
-    const repository = createFinancialAccountRepository(db);
+    const service = createFinancialAccountService(createFinancialAccountRepository(db));
     const app = await createApi({
       checkDatabase: async () => {},
       corsOrigin: "https://finscope.pages.dev",
       reportError: assert.fail,
-      accounts: { authorize, repository, transferRepository: createTransferRepository(db) },
+      workspace: {
+        authorize,
+        financialAccountService: service,
+        transactionService: createTransactionService(createTransactionRepository(db)),
+        transferService: createTransferService(createTransferRepository(db)),
+      },
     });
     onTestFinished(() => app.close());
-    return { app, repository };
+    return { app, service };
   }
 
-  const { app: first, repository } = await startApi();
+  const { app: first, service } = await startApi();
   const brokerage = {
     name: "Brokerage",
     type: "brokerage",
@@ -205,7 +232,7 @@ test("an owner can correct an account in place and see the new opening balance a
   };
   assert.deepEqual(correction.json(), corrected);
   const withImmutableFields = { ...corrected, id: randomUUID(), ownerUserId: randomUUID(), type: "brokerage" };
-  assert.deepEqual(await repository.correct(workspaceOwner, ids[0], withImmutableFields), { status: "saved", account: corrected });
+  assert.deepEqual(await service.correct(workspaceOwner, ids[0], withImmutableFields), { status: "saved", account: corrected });
 
   const rejectedCorrection = await first.inject({
     method: "PATCH",
@@ -264,18 +291,20 @@ test("opening and correcting accounts use the Singapore calendar date", async ({
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
     reportError: assert.fail,
-    accounts: {
+    workspace: {
       authorize: async () => ({ status: "authorized", ownerUserId }),
-      transferRepository: {
+      transferService: {
         deleteTransfer: async () => assert.fail("Unexpected transfer deletion reached storage"),
         recordTransfer: async () => assert.fail("Unexpected transfer reached storage"),
         correctTransfer: async () => assert.fail("Unexpected transfer correction reached storage"),
       },
-      repository: {
+      transactionService: {
         listTransactions: async () => assert.fail("Unexpected transaction history reached storage"),
         correctTransaction: async () => assert.fail("Unexpected transaction correction reached storage"),
         deleteTransaction: async () => assert.fail("Unexpected transaction deletion reached storage"),
         recordTransaction: async () => assert.fail("Unexpected transaction reached storage"),
+      },
+      financialAccountService: {
         delete: async () => assert.fail("Unexpected deletion reached storage"),
         list: async () => assert.fail("Unexpected list reached storage"),
         open: async (_owner, input) => ({ ...input, id: accountId }),

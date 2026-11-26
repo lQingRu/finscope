@@ -1,4 +1,6 @@
+import { and, eq, or } from "drizzle-orm";
 import { date, numeric, pgSchema, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { accounts } from "../financial-accounts/table.ts";
 
 export const transfers = pgSchema("finscope_private").table("transfers", {
   id: uuid().defaultRandom().primaryKey(),
@@ -17,3 +19,10 @@ export const transferColumns = {
   amount: transfers.amount,
   date: transfers.date,
 };
+
+export function linkedTransfers(ownerUserId: string | typeof accounts.ownerUserId, accountId: string | typeof accounts.id) {
+  return and(
+    eq(transfers.ownerUserId, ownerUserId),
+    or(eq(transfers.sourceAccountId, accountId), eq(transfers.destinationAccountId, accountId)),
+  );
+}

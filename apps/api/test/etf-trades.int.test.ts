@@ -5,9 +5,14 @@ import { Pool } from "pg";
 import { test } from "vitest";
 import { createApi } from "../src/app/create-api.ts";
 import { migrateDatabase } from "../src/infrastructure/postgres.ts";
-import { createEtfTradeRepository } from "../src/etf-trades/repository.ts";
-import { createFinancialAccountRepository } from "../src/financial-accounts/repository.ts";
-import { createTransferRepository } from "../src/transfers/repository.ts";
+import { createEtfTradeRepository } from "../src/etf-trades/etf-trades.repository.ts";
+import { createEtfTradeService } from "../src/etf-trades/etf-trades.service.ts";
+import { createFinancialAccountRepository } from "../src/financial-accounts/financial-accounts.repository.ts";
+import { createFinancialAccountService } from "../src/financial-accounts/financial-accounts.service.ts";
+import { createTransactionRepository } from "../src/transactions/transactions.repository.ts";
+import { createTransactionService } from "../src/transactions/transactions.service.ts";
+import { createTransferRepository } from "../src/transfers/transfers.repository.ts";
+import { createTransferService } from "../src/transfers/transfers.service.ts";
 
 const databaseUrl = process.env.FINSCOPE_TEST_DATABASE_URL;
 const tradeDetails = {
@@ -25,14 +30,15 @@ async function startWorkspace(onFinish: (cleanup: () => Promise<void>) => void) 
     checkDatabase: async () => {},
     corsOrigin: "https://finscope.pages.dev",
     reportError: assert.fail,
-    accounts: {
+    workspace: {
       authorize: async (header) => {
         if (header === "Bearer owner") return { status: "authorized", ownerUserId };
         return { status: header ? "forbidden" : "unauthenticated" };
       },
-      repository: createFinancialAccountRepository(db),
-      transferRepository: createTransferRepository(db),
-      etfTradeRepository: createEtfTradeRepository(db),
+      financialAccountService: createFinancialAccountService(createFinancialAccountRepository(db)),
+      transactionService: createTransactionService(createTransactionRepository(db)),
+      transferService: createTransferService(createTransferRepository(db)),
+      etfTradeService: createEtfTradeService(createEtfTradeRepository(db)),
     },
   });
   onFinish(() => app.close());
