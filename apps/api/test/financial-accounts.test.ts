@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { correctFinancialAccount, currentSingaporeMonth, openFinancialAccount } from "@finscope/contracts/financial-accounts";
 import { test, vi } from "vitest";
-import { createApi } from "../src/app.ts";
-import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
+import { createApi } from "../src/app/create-api.ts";
+import { createOwnerAuthorizer } from "../src/infrastructure/supabase-owner-auth.ts";
 
 const ownerUserId = "3f2e88dc-5439-44b8-9d4d-4ef801e47781";
 const ownerGoogleSubject = "123456789012345678901";
@@ -128,7 +128,7 @@ test("an owner can correct an account in place and see the new opening balance a
   const { randomUUID } = await import("node:crypto");
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const { Pool } = await import("pg");
-  const { migrateDatabase } = await import("../src/database.ts");
+  const { migrateDatabase } = await import("../src/infrastructure/postgres.ts");
   const { createFinancialAccountRepository } = await import("../src/financial-accounts/repository.ts");
   const { createTransferRepository } = await import("../src/transfers/repository.ts");
   const workspaceOwner = randomUUID();

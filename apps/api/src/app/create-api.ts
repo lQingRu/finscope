@@ -4,9 +4,9 @@ import { tradeFundingConflict } from "@finscope/contracts/etf-trades";
 import { healthResponses } from "@finscope/contracts/health";
 import Fastify, { LogController } from "fastify";
 import { z } from "zod";
-import { TradeFundingError } from "./etf-trades/cash.ts";
-import { financialAccountRoutes } from "./financial-accounts/routes.ts";
-import type { FinancialAccountsOptions } from "./financial-accounts/routes.ts";
+import { TradeFundingError } from "../etf-trades/cash.ts";
+import { financialAccountRoutes } from "../financial-accounts/routes.ts";
+import type { FinancialAccountsOptions } from "../financial-accounts/routes.ts";
 
 type ApiOptions = {
   checkDatabase: () => Promise<void>;

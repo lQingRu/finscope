@@ -1,48 +1,9 @@
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import { z } from "zod";
-import { createApi } from "./app.ts";
-import { migrateDatabase } from "./database.ts";
-import { createEtfTradeRepository } from "./etf-trades/repository.ts";
-import { createOwnerAuthorizer } from "./financial-accounts/authorization.ts";
-import { createFinancialAccountRepository } from "./financial-accounts/repository.ts";
-import { configureTelemetry, flushTelemetry, reportError } from "./telemetry.ts";
-import { createTransferRepository } from "./transfers/repository.ts";
+import { composeApi } from "./app/compose.ts";
+import { apiEnvSchema } from "./config/env.ts";
+import { migrateDatabase } from "./infrastructure/postgres.ts";
+import { configureTelemetry, flushTelemetry, reportError } from "./infrastructure/telemetry.ts";
 
-const envSchema = z.object({
-  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, hostname: /./ }),
-  CORS_ORIGIN: z
-    .url({ protocol: /^https?$/ })
-    .refine((value) => URL.parse(value)?.origin === value),
-  SUPABASE_URL: z.url({ protocol: /^https$/ }).refine((value) => URL.parse(value)?.origin === value),
-  SUPABASE_PUBLISHABLE_KEY: z.string().regex(/^sb_publishable_[a-zA-Z0-9_-]+$/),
-  FINSCOPE_OWNER_USER_ID: z.uuid().toLowerCase(),
-  FINSCOPE_OWNER_GOOGLE_SUB: z.string().regex(/^[0-9]+$/),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  SENTRY_DSN: z.union([
-    z.url({ protocol: /^https?$/, normalize: true }).refine((value) => {
-      const dsn = URL.parse(value);
-      return (
-        dsn !== null &&
-        /^\w+$/.test(dsn.username) &&
-        /^\w*$/.test(dsn.password) &&
-        /\/\d+$/.test(dsn.pathname) &&
-        !dsn.search &&
-        !dsn.hash
-      );
-    }),
-    z.literal(""),
-  ]).optional(),
-  RENDER: z.string().optional(),
-  NODE_ENV: z.string().default("development"),
-  RELEASE: z.string().optional(),
-  RENDER_GIT_COMMIT: z.string().optional(),
-}).refine((config) => config.RENDER !== "true" || Boolean(config.SENTRY_DSN), {
-  path: ["SENTRY_DSN"],
-});
-
-const env = envSchema.safeParse(process.env);
+const env = apiEnvSchema.safeParse(process.env);
 if (!env.success) {
   const fields = new Set(env.error.issues.map(({ path }) => path.join(".")));
   console.error("Invalid API environment variables: %s", Array.from(fields).join(", "));
@@ -62,36 +23,7 @@ if (config.SENTRY_DSN) {
   }
 }
 
-const pool = new Pool({
-  connectionString: config.DATABASE_URL,
-  max: 5,
-  connectionTimeoutMillis: 2_000,
-  query_timeout: 2_500,
-});
-const db = drizzle(pool);
-
-const api = await createApi({
-  checkDatabase: async () => {
-    await db.execute(sql`select 1`);
-  },
-  accounts: {
-    authorize: createOwnerAuthorizer({
-      supabaseUrl: config.SUPABASE_URL,
-      supabasePublishableKey: config.SUPABASE_PUBLISHABLE_KEY,
-      ownerUserId: config.FINSCOPE_OWNER_USER_ID,
-      ownerGoogleSubject: config.FINSCOPE_OWNER_GOOGLE_SUB,
-    }),
-    repository: createFinancialAccountRepository(db),
-    transferRepository: createTransferRepository(db),
-    etfTradeRepository: createEtfTradeRepository(db),
-  },
-  corsOrigin: config.CORS_ORIGIN,
-  reportError,
-});
-
-pool.on("error", () => {
-  api.log.warn("Idle PostgreSQL connection closed unexpectedly");
-});
+const { api, pool } = await composeApi(config);
 
 try {
   await migrateDatabase(pool);

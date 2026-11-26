@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { healthResponses } from "@finscope/contracts/health";
 import { test } from "vitest";
 import { z } from "zod";
-import { createApi } from "../src/app.ts";
+import { createApi } from "../src/app/create-api.ts";
 
 test("GET /health reports ready when PostgreSQL responds", async ({ onTestFinished }) => {
   const app = await createApi({

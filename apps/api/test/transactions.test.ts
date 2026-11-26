@@ -5,9 +5,9 @@ import type { FinancialAccountOverview } from "@finscope/contracts/financial-acc
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { test, vi } from "vitest";
-import { createApi } from "../src/app.ts";
-import { migrateDatabase } from "../src/database.ts";
-import { createOwnerAuthorizer } from "../src/financial-accounts/authorization.ts";
+import { createApi } from "../src/app/create-api.ts";
+import { migrateDatabase } from "../src/infrastructure/postgres.ts";
+import { createOwnerAuthorizer } from "../src/infrastructure/supabase-owner-auth.ts";
 import { createFinancialAccountRepository } from "../src/financial-accounts/repository.ts";
 import { createTransferRepository } from "../src/transfers/repository.ts";
 

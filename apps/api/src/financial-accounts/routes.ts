@@ -18,7 +18,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { EtfTradeRepository } from "../etf-trades/repository.ts";
 import { registerEtfTradeRoutes } from "../etf-trades/routes.ts";
-import type { AuthorizeOwner } from "./authorization.ts";
+import type { AuthorizeOwner } from "../infrastructure/supabase-owner-auth.ts";
 import { registerTransactionRoutes } from "../transactions/routes.ts";
 import type { TransactionRepository } from "../transactions/routes.ts";
 import { registerTransferRoutes } from "../transfers/routes.ts";
