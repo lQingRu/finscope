@@ -2,9 +2,9 @@
 
 ## Implemented in the repository
 
-The personal workspace uses Google sign-in and admits the designated owner. The owner can open and correct SGD bank and brokerage accounts, see current cash and period cashflow on the Overview, and record, correct, or delete everyday income, expenses, and transfers. Both account histories show a transfer and the period's income and expenses exclude it. [Workspace](../apps/web/src/workspace.tsx) · [Account and activity checks](../apps/api/test/transactions.test.ts)
+The personal workspace uses Google sign-in and admits the designated owner. The owner can open and correct SGD bank and brokerage accounts, see current cash and period cashflow on the Overview, and record, correct, or delete everyday income, expenses, and transfers. Both account histories show a transfer and the period's income and expenses exclude it. [Workspace](../apps/web/src/app/routes/workspace.tsx) · [Account and activity checks](../apps/api/test/transactions.test.ts)
 
-The owner can record, correct, or delete SGD ETF buys and sells with fees. Brokerage holdings show units, costs, and realised profit or loss. An open holding awaits its first price and the portfolio shows a partial valuation with the known subtotal. Dated market-price entry remains part of the planned milestone walkthrough below. [Holdings view](../apps/web/src/brokerage-holdings.tsx) · [ETF checks](../apps/api/test/etf-trades.test.ts)
+The owner can record, correct, or delete SGD ETF buys and sells with fees. Brokerage holdings show units, costs, and realised profit or loss. An open holding awaits its first price and the portfolio shows a partial valuation with the known subtotal. Dated market-price entry remains part of the planned milestone walkthrough below. [Holdings view](../apps/web/src/features/investments/components/brokerage-holdings.tsx) · [ETF checks](../apps/api/test/etf-trades.test.ts)
 
 ## Confirmed for the first release
 
